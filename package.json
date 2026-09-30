@@ -1,0 +1,33 @@
+{
+  "name": "oassis-api",
+  "version": "1.0.1",
+  "private": true,
+  "description": "Web extraction and browser control for agents: one endpoint, many formats, pay per call.",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "deadcode": "node scripts/dead-exports.mjs",
+    "check": "npm run typecheck && npm run deadcode && npm test",
+    "wallet": "node ../private/scripts/wallet-check.mjs",
+    "account": "node ../private/scripts/create-account.mjs"
+  },
+  "dependencies": {
+    "@cloudflare/puppeteer": "^1.4.0",
+    "@coinbase/x402": "^2.1.0",
+    "@x402/core": "^2.27.0",
+    "@x402/evm": "^2.27.0",
+    "@x402/fetch": "^2.27.0",
+    "@x402/hono": "^2.27.0",
+    "hono": "^4.6.14",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260923.1",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8",
+    "wrangler": "^4.39.0"
+  }
+}

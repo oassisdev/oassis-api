@@ -1,0 +1,113 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "oassis-api",
+  "main": "src/index.ts",
+  // quickAction() on the binding requires compatibility_date >= 2026-03-24.
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  // No API token: Quick Actions go through the binding.
+  // `remote: true` is mandatory — quickAction() does not exist in wrangler dev's
+  // local mode, and without it you get: The RPC receiver does not implement the
+  // method "quickAction".
+  // Document conversion (PDF, Word, Excel, CSV) with toMarkdown. No object to create:
+  // the binding is the whole setup, and the conversion is free except for images.
+  "ai": {
+    "binding": "AI"
+  },
+  "browser": {
+    "binding": "BROWSER",
+    "remote": true
+  },
+  /**
+   * Two hostnames for the same Worker:
+   *
+   *   api.oassis.dev/web/v1/…   the umbrella for every API family
+   *   web.oassis.dev/v1/…       the family alone, so it can enter x402
+   *                             directories as a resource of its own
+   *
+   * `custom_domain` creates the DNS record and the certificate without touching
+   * the dashboard.
+   *
+   * Do NOT use api.web.oassis.dev: Universal SSL only covers the domain and one
+   * level of subdomain, so a third level has no valid certificate unless you pay
+   * for Advanced Certificate Manager.
+   */
+  "routes": [
+    { "pattern": "api.oassis.dev", "custom_domain": true },
+    { "pattern": "web.oassis.dev", "custom_domain": true },
+    // The bare domain: where a person who heard the name lands. It answers the one page
+    // written for a human; the hosts above answer the index a client is looking for.
+    //
+    // `www` is deliberately NOT here. The same page on two addresses competes with itself
+    // in a search engine, so www is a redirect rule in Cloudflare pointing at this one,
+    // which is also what the canonical link on the page says.
+    { "pattern": "oassis.dev", "custom_domain": true }
+  ],
+  // The browser session lives in a Durable Object: that is what keeps the page
+  // open between calls and what closes the browser when nobody is using it, so it
+  // does not keep billing.
+  "durable_objects": {
+    "bindings": [
+      { "name": "SESSIONS", "class_name": "BrowserSession" },
+      // A batch cannot be answered in one request, so the work happens in its own
+      // object, on an alarm, and the caller collects it with the jobId.
+      { "name": "JOBS", "class_name": "BatchJob" },
+      // A crawl is a batch that feeds itself from the links it finds.
+      { "name": "CRAWLS", "class_name": "CrawlJob" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["BrowserSession"] },
+    { "tag": "v2", "new_sqlite_classes": ["BatchJob"] },
+    { "tag": "v3", "new_sqlite_classes": ["CrawlJob"] }
+  ],
+  // Accounts, API keys, transactions and sessions: identity and money, nothing else.
+  "d1_databases": [
+    {
+      "binding": "BILLING",
+      "database_name": "oassis-billing",
+      // Any value works locally; deploying needs the real one:
+      //   npx wrangler d1 create oassis-billing
+      "database_id": "e0c07b5d-b379-43ba-9667-d97e4c241cbf",
+      "migrations_dir": "migrations"
+    }
+  ],
+  // Render cache: a page already rendered is not paid for twice, and the saving is
+  // passed on to the caller's price. Optional — without it everything renders fresh.
+  "kv_namespaces": [
+    {
+      "binding": "CACHE",
+      // Any value works locally; deploying needs the real one:
+      //   npx wrangler kv namespace create oassis-cache
+      "id": "527d1605b87f4e72be3986b1505c7abc"
+    }
+  ],
+  "vars": {
+    "BASE_URL": "https://api.oassis.dev",
+    // Search pays Exa per call from a hot wallet whose key is a secret:
+    //   npx wrangler secret put X402_WALLET_KEY
+    // Keep little in it. Without it, /search/exa answers 503 before charging.
+    //
+    // The address the search key must belong to. A secret rather than a var, not because it
+    // is one — an address is public — but because publishing it next to the code points at
+    // the wallet that pays, and at how much is left in it:
+    //   npx wrangler secret put X402_WALLET_ADDRESS
+    /**
+     * The address that receives x402 payments. **The wallet gate is closed until this is
+     * set**, and with it closed a keyless HTTP caller is told to use a key.
+     *
+     * It is a var and not a secret because the address is public, but it has to be the REAL
+     * one: anything paid to a test address is gone. On mainnet it also needs CDP keys (see
+     * above), because the public facilitator does not settle on Base.
+     */
+    "X402_PAY_TO": "0x23Fc725e8EAa1c58900C6507Ba89be99a6DFc75d",
+    /**
+     * Base mainnet: real USDC. It needs the CDP keys above, because the public facilitator
+     * does not settle here — without them the gate falls back to the test network and says
+     * so in the log rather than pretending to charge.
+     */
+    "X402_NETWORK": "base",
+    "X402_FACILITATOR_URL": "https://x402.org/facilitator"
+  }
+}

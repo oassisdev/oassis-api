@@ -1,0 +1,13 @@
+node_modules/
+.wrangler/
+dist/
+.DS_Store
+
+# Secrets. They belong beside the configuration that reads them, and never in a commit.
+.dev.vars
+.mcpregistry_*
+
+# The console is not part of this repository: src/private/backoffice.ts is a no-op stub
+# here, and the real file is copied over it before deploying. A backup of that copy was
+# committed once, which is what this line is for.
+*.bak
