@@ -28,6 +28,36 @@ export const FREE_PER_DAY = { scrape: 10, map: 10 } as const;
 /** Given once per caller, ever: the demo only has to be seen once. */
 export const FREE_EVER = { sessions: 1, actions: 10, searches: 5 } as const;
 
+/**
+ * Gateways: one address, many callers.
+ *
+ * Smithery proxies every one of its users to us from its own infrastructure and does not
+ * forward the client's address — measured on 2026-09-30: `cf-connecting-ip` was theirs,
+ * and there was no `x-forwarded-for` or `true-client-ip`. So every Smithery user looks
+ * like the same caller to us, and the counters that are given **once ever** would be spent
+ * for all of them by whoever arrived first, permanently.
+ *
+ * A gateway therefore gets a pool of its own: larger, shared by its users, and **daily**
+ * rather than once ever, so it refills instead of dying. If one of these prefixes ever
+ * stops being theirs, their traffic simply falls back to being treated as one ordinary
+ * caller — which is what it is today.
+ */
+const GATEWAYS: ReadonlyArray<{ name: string; prefix: string }> = [
+  { name: "smithery", prefix: "2a06:98c0:3600:" },
+];
+
+/** The gateway a call came through, if any. */
+export function gatewayOf(ip: string): string | null {
+  const found = GATEWAYS.find((g) => ip.startsWith(g.prefix));
+  return found ? found.name : null;
+}
+
+/**
+ * What a gateway's users share, per day. Bigger than one caller's allowance because it is
+ * split between all of them, and small enough that it cannot become somebody's free plan.
+ */
+export const FREE_GATEWAY_DAY = { scrape: 30, map: 30, sessions: 3, actions: 30, searches: 5 } as const;
+
 /** Pages of the same site a day: three is trying it, three hundred is harvesting it. */
 export const FREE_PER_HOST = 3;
 
@@ -188,27 +218,29 @@ export async function claimFreeCall(
   if (!looksLikeClient(caller.userAgent)) return { ok: false, reason: "not_a_client" };
   if (formatsNotFree(call.formats).length) return { ok: false, reason: "format" };
 
-  const counters = await readCounters(env, caller.ip);
+  const gateway = gatewayOf(caller.ip);
+  const limit = limitsFor(gateway);
+  const counters = await readCounters(env, caller.ip, gateway);
   const { day, ever } = counters;
 
   if (counters.globalSpent + call.micros > FREE_SPEND_GLOBAL_DAY) return { ok: false, reason: "global" };
 
   switch (call.tool) {
     case "web_scrape":
-      if (day.scrape >= FREE_PER_DAY.scrape) return { ok: false, reason: "scrape_today" };
+      if (day.scrape >= limit.scrape) return { ok: false, reason: "scrape_today" };
       break;
     case "web_map":
-      if (day.map >= FREE_PER_DAY.map) return { ok: false, reason: "map_today" };
+      if (day.map >= limit.map) return { ok: false, reason: "map_today" };
       break;
     case "web_session_open":
-      if (ever.sessions >= FREE_EVER.sessions) return { ok: false, reason: "session_ever" };
+      if (ever.sessions >= limit.sessions) return { ok: false, reason: "session_ever" };
       if ((call.sessionsOpen ?? 0) >= 3) return { ok: false, reason: "sessions_busy" };
       break;
     case "web_act":
-      if (ever.actions >= FREE_EVER.actions) return { ok: false, reason: "actions_ever" };
+      if (ever.actions >= limit.actions) return { ok: false, reason: "actions_ever" };
       break;
     case "web_search_exa":
-      if (ever.searches >= FREE_EVER.searches) return { ok: false, reason: "searches_ever" };
+      if (ever.searches >= limit.searches) return { ok: false, reason: "searches_ever" };
       break;
   }
 
@@ -238,15 +270,21 @@ export async function claimFreeCall(
   if (FREE_CASH_TOOLS.has(call.tool)) counters.cashSpent += call.micros;
   await writeCounters(env, counters, call.tool);
 
-  return { ok: true, left: leftFrom(day, ever) };
+  return { ok: true, left: leftFrom(day, ever, limit) };
 }
 
-const leftFrom = (day: DayRecord, ever: EverRecord): FreeLeft => ({
-  scrape: FREE_PER_DAY.scrape - day.scrape,
-  map: FREE_PER_DAY.map - day.map,
-  sessions: FREE_EVER.sessions - ever.sessions,
-  actions: FREE_EVER.actions - ever.actions,
-  searches: FREE_EVER.searches - ever.searches,
+/** One caller's allowance, or the pool a gateway's users share. */
+type Limits = { scrape: number; map: number; sessions: number; actions: number; searches: number };
+
+const limitsFor = (gateway: string | null): Limits =>
+  gateway ? { ...FREE_GATEWAY_DAY } : { ...FREE_PER_DAY, ...FREE_EVER };
+
+const leftFrom = (day: DayRecord, ever: EverRecord, limit: Limits): FreeLeft => ({
+  scrape: limit.scrape - day.scrape,
+  map: limit.map - day.map,
+  sessions: limit.sessions - ever.sessions,
+  actions: limit.actions - ever.actions,
+  searches: limit.searches - ever.searches,
 });
 
 /**
@@ -268,7 +306,10 @@ export async function releaseFreeCall(
 ): Promise<FreeLeft | null> {
   if (!env.CACHE) return null;
 
-  const counters = await readCounters(env, caller.ip);
+  // The refund has to find the same counters the claim spent, so it resolves the gateway
+  // the same way: a refund written to the wrong key gives the call back to nobody.
+  const gateway = gatewayOf(caller.ip);
+  const counters = await readCounters(env, caller.ip, gateway);
   const { day, ever } = counters;
   const back = (n: number) => Math.max(0, n - 1);
 
@@ -289,7 +330,7 @@ export async function releaseFreeCall(
   counters.globalSpent = Math.max(0, counters.globalSpent - call.micros);
   if (FREE_CASH_TOOLS.has(call.tool)) counters.cashSpent = Math.max(0, counters.cashSpent - call.micros);
   await writeCounters(env, counters, call.tool);
-  return leftFrom(day, ever);
+  return leftFrom(day, ever, limitsFor(gateway));
 }
 
 /** The three counters a keyless caller is measured against, under one fingerprint. */
@@ -304,11 +345,13 @@ interface Counters {
   cashSpent: number;
 }
 
-async function readCounters(env: Env, ip: string): Promise<Counters> {
+async function readCounters(env: Env, ip: string, gateway: string | null): Promise<Counters> {
   const cache = env.CACHE as KVNamespace;
-  const who = await fingerprint(ip);
+  const who = gateway ? `gw:${gateway}` : await fingerprint(ip);
   const dayKey = `free:${today()}:${who}`;
-  const everKey = `free:ever:${who}`;
+  // A gateway's "ever" refills every day: it is shared by everyone behind it, so spending
+  // it once would close the door on all of them for good.
+  const everKey = gateway ? `free:ever:${today()}:${who}` : `free:ever:${who}`;
   const globalKey = `free:spend:${today()}`;
   const cashKey = `free:cash:${today()}`;
   return {
