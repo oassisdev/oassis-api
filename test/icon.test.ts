@@ -28,7 +28,7 @@ describe("the mark", () => {
 
   /** A page that links to a file we do not serve shows a broken icon, silently. */
   it("links only to files that exist", async () => {
-    const hrefs = [...ICON_LINKS.matchAll(/href="([^"]+)"/g)].map((m) => m[1]);
+    const hrefs = [...ICON_LINKS.matchAll(/href="([^"]+)"/g)].map((m) => m[1]!);
     expect(hrefs.length).toBeGreaterThan(0);
     for (const href of hrefs) expect((await get(href)).status).toBe(200);
   });
