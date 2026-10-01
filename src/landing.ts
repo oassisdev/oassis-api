@@ -27,65 +27,8 @@ const DESCRIPTION =
   "Scrape any page or document to markdown, map and crawl whole sites, and drive a real browser. " +
   "Pay per call with a wallet — no API key, no signup, no monthly plan.";
 
-const escape = (s: string) => s.replace(/[<>&"]/g, (c) => `&#${c.charCodeAt(0)};`);
-
-export function landing(c: Context<{ Bindings: Env }>): string {
-  const base = origin(c);
-  const api = c.env.BASE_URL ?? base;
-  const prefix = prefixForHost(c);
-
-  const prices: [string, string, string][] = [
-    ["Read a page", inDollars(PER_FORMAT.markdown), "per output asked for: markdown, html, links, controls…"],
-    ["Read a document", inDollars(PRICES.document), "PDF, Word, Excel or CSV by url, no browser"],
-    ["From the cache", inDollars(PRICES.cacheHit), "a recent render, priced before you are charged"],
-    ["List a site's urls", inDollars(mapPrice(false)), "from its sitemap"],
-    ["Open a browser session", inDollars(PRICES.sessionOpen), "includes the first minute"],
-    ["Act on the page", inDollars(PRICES.action), "click, type, select, scroll, wait"],
-    ["Search the web", "$0.007", "passed through at what the provider charges"],
-  ];
-
-  const rows = prices
-    .map(
-      ([what, price, note]) =>
-        `<tr><td>${escape(what)}</td><td class="p">${escape(price)}</td><td class="n">${escape(note)}</td></tr>`,
-    )
-    .join("");
-
-  /** Search engines read this, and it is the only structured claim about what this is. */
-  const jsonLd = JSON.stringify({
-    "@context": "https://schema.org",
-    "@type": "WebAPI",
-    name: "oassis",
-    description: DESCRIPTION,
-    url: base,
-    documentation: `${api}/openapi.json`,
-    provider: { "@type": "Organization", name: "oassis" },
-    offers: {
-      "@type": "Offer",
-      price: (PER_FORMAT.markdown / 1_000_000).toFixed(4),
-      priceCurrency: "USD",
-      description: "Per call. No subscription.",
-    },
-  });
-
-  return `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${escape(TITLE)}</title>
-<meta name="description" content="${escape(DESCRIPTION)}">
-<link rel="canonical" href="${base}/">
-<meta property="og:type" content="website">
-<meta property="og:title" content="${escape(TITLE)}">
-<meta property="og:description" content="${escape(DESCRIPTION)}">
-<meta property="og:url" content="${base}/">
-<meta name="twitter:card" content="summary">
-<meta property="og:image" content="${base}/icon-512.png">
-<meta name="twitter:image" content="${base}/icon-512.png">
-${ICON_LINKS}
-<script type="application/ld+json">${jsonLd}</script>
-<style>
+/** The house stylesheet, shared by every page a person reads. */
+export const STYLE = `<style>
   /**
    * GitHub's own reading page, because that is where this audience already reads:
    * its palette, its font stack, its rules under headings, its tables. Light by
@@ -157,7 +100,68 @@ ${ICON_LINKS}
 
   footer { margin-top:40px; padding-top:16px; border-top:1px solid var(--line);
            color:var(--muted); font-size:14px; text-align:center }
-</style>
+</style>`;
+
+/** Escapes the four characters that can break out of our markup. */
+const escape = (s: string) => s.replace(/[<>&"]/g, (c) => `&#${c.charCodeAt(0)};`);
+
+export function landing(c: Context<{ Bindings: Env }>): string {
+  const base = origin(c);
+  const api = c.env.BASE_URL ?? base;
+  const prefix = prefixForHost(c);
+
+  const prices: [string, string, string][] = [
+    ["Read a page", inDollars(PER_FORMAT.markdown), "per output asked for: markdown, html, links, controls…"],
+    ["Read a document", inDollars(PRICES.document), "PDF, Word, Excel or CSV by url, no browser"],
+    ["From the cache", inDollars(PRICES.cacheHit), "a recent render, priced before you are charged"],
+    ["List a site's urls", inDollars(mapPrice(false)), "from its sitemap"],
+    ["Open a browser session", inDollars(PRICES.sessionOpen), "includes the first minute"],
+    ["Act on the page", inDollars(PRICES.action), "click, type, select, scroll, wait"],
+    ["Search the web", "$0.007", "passed through at what the provider charges"],
+  ];
+
+  const rows = prices
+    .map(
+      ([what, price, note]) =>
+        `<tr><td>${escape(what)}</td><td class="p">${escape(price)}</td><td class="n">${escape(note)}</td></tr>`,
+    )
+    .join("");
+
+  /** Search engines read this, and it is the only structured claim about what this is. */
+  const jsonLd = JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "WebAPI",
+    name: "oassis",
+    description: DESCRIPTION,
+    url: base,
+    documentation: `${api}/openapi.json`,
+    provider: { "@type": "Organization", name: "oassis" },
+    offers: {
+      "@type": "Offer",
+      price: (PER_FORMAT.markdown / 1_000_000).toFixed(4),
+      priceCurrency: "USD",
+      description: "Per call. No subscription.",
+    },
+  });
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${escape(TITLE)}</title>
+<meta name="description" content="${escape(DESCRIPTION)}">
+<link rel="canonical" href="${base}/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="${escape(TITLE)}">
+<meta property="og:description" content="${escape(DESCRIPTION)}">
+<meta property="og:url" content="${base}/">
+<meta name="twitter:card" content="summary">
+<meta property="og:image" content="${base}/icon-512.png">
+<meta name="twitter:image" content="${base}/icon-512.png">
+${ICON_LINKS}
+<script type="application/ld+json">${jsonLd}</script>
+${STYLE}
 </head>
 <body>
 <div class="wrap">
@@ -276,7 +280,9 @@ does not happen. A request we cannot serve is never charged for.</p>
 <footer>
   oassis · <a href="${api}${prefix}/scrape">API reference</a> ·
   <a href="${api}/llms.txt">llms.txt</a> ·
-  <a href="${api}/openapi.json">OpenAPI</a>
+  <a href="${api}/openapi.json">OpenAPI</a> ·
+  <a href="${base}/privacy">Privacy</a> ·
+  <a href="${base}/support">Support</a>
 </footer>
 
 </div>
@@ -291,7 +297,7 @@ export function robotsTxt(c: Context<{ Bindings: Env }>): string {
 
 export function sitemapXml(c: Context<{ Bindings: Env }>): string {
   const base = origin(c);
-  const urls = ["/", `${prefixForHost(c)}/scrape`, "/llms.txt", "/openapi.json"];
+  const urls = ["/", `${prefixForHost(c)}/scrape`, "/llms.txt", "/openapi.json", "/privacy", "/support"];
   return `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${urls.map((u) => `  <url><loc>${base}${u === "/" ? "/" : u}</loc></url>`).join("\n")}

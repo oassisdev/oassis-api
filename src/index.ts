@@ -45,6 +45,7 @@ import type { CrawlMessage } from "./jobs/crawl";
 import { mapSite } from "./map";
 import { landing, robotsTxt, sitemapXml } from "./landing";
 import { mountIcon } from "./icon";
+import { privacyPage, supportPage } from "./legal";
 import { actDoc, batchDoc, crawlDoc, doc, mapDoc, searchDoc, sessionDoc } from "./docs";
 import { llmsTxt, openapi } from "./openapi";
 import { mountBackoffice } from "./private/backoffice";
@@ -539,6 +540,14 @@ const isSite = (c: Context<{ Bindings: Env }>) => {
 
 /** The mark, on every host. Free: a crawler fetches it before it reads anything else. */
 mountIcon(app);
+
+/** What a person looks for before trusting an API with money, and what a directory demands. */
+const htmlPage = (body: string) =>
+  new Response(body, {
+    headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=3600" },
+  });
+app.get("/privacy", (c) => htmlPage(privacyPage(c)));
+app.get("/support", (c) => htmlPage(supportPage(c)));
 
 app.get("/robots.txt", (c) =>
   c.text(robotsTxt(c), 200, { "cache-control": "public, max-age=86400", "content-type": "text/plain; charset=utf-8" }),
