@@ -43,7 +43,7 @@ import type { Message } from "./session/do";
 import type { JobMessage } from "./jobs/do";
 import type { CrawlMessage } from "./jobs/crawl";
 import { mapSite } from "./map";
-import { landing, robotsTxt, sitemapXml } from "./landing";
+import { landing, robotsTxt, sitemapXml, servedText } from "./landing";
 import { mountIcon } from "./icon";
 import { privacyPage, supportPage } from "./legal";
 import { actDoc, batchDoc, crawlDoc, doc, mapDoc, searchDoc, sessionDoc } from "./docs";
@@ -394,7 +394,7 @@ app.on("POST", bothPaths("map"), async (c) => {
       provider,
     );
     return Array.isArray(page.data.links) ? (page.data.links as string[]) : [];
-  });
+  }, servedText(c));
 
   return c.json({
     success: res.urls.length > 0,

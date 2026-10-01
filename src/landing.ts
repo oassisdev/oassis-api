@@ -290,14 +290,70 @@ does not happen. A request we cannot serve is never charged for.</p>
 </html>`;
 }
 
+/**
+ * The two files a map asks a site for, answered from here when the site is us.
+ *
+ * A Worker cannot fetch its own hostname — the request loops back and never resolves —
+ * so `web_map` came back empty for oassis.dev while mapping every other site correctly.
+ * The one site we show in every example was the one our own tool could not read.
+ *
+ * Returns null for anyone else's host, which is the signal to go to the network.
+ */
+export function servedText(c: Context<{ Bindings: Env }>): (url: string) => string | null {
+  const ours = new Set<string>();
+  for (const host of [new URL(c.req.url).hostname, c.env.BASE_URL && new URL(c.env.BASE_URL).hostname]) {
+    if (host) ours.add(host);
+  }
+  const apex = c.env.BASE_URL ? new URL(c.env.BASE_URL).hostname.split(".").slice(-2).join(".") : "";
+  if (apex) {
+    ours.add(apex);
+    ours.add(`www.${apex}`);
+    ours.add(`web.${apex}`);
+    ours.add(`api.${apex}`);
+  }
+
+  return (candidate: string) => {
+    let url: URL;
+    try {
+      url = new URL(candidate);
+    } catch {
+      return null;
+    }
+    if (!ours.has(url.hostname)) return null;
+    // Answer for the host that was asked for. Serving api.oassis.dev's sitemap to a
+    // map of oassis.dev lists urls the map then throws away as belonging elsewhere.
+    const base = url.origin;
+    const label = url.hostname.split(".")[0] ?? "";
+    const prefix = label === "web" ? "/v1" : "/web/v1";
+    if (url.pathname === "/robots.txt") return robotsFor(base);
+    if (url.pathname === "/sitemap.xml") return sitemapFor(base, prefix);
+    // Ours, but not a file we serve: say so rather than letting it hang on the network.
+    return "";
+  };
+}
+
 /** Crawlers ask for this first. Letting them in is the whole point of having a page. */
 export function robotsTxt(c: Context<{ Bindings: Env }>): string {
-  return ["User-agent: *", "Allow: /", "", `Sitemap: ${origin(c)}/sitemap.xml`, ""].join("\n");
+  return robotsFor(origin(c));
+}
+
+/** The same file, for a named host rather than the one that asked. */
+export function robotsFor(base: string): string {
+  return ["User-agent: *", "Allow: /", "", `Sitemap: ${base}/sitemap.xml`, ""].join("\n");
 }
 
 export function sitemapXml(c: Context<{ Bindings: Env }>): string {
-  const base = origin(c);
-  const urls = ["/", `${prefixForHost(c)}/scrape`, "/llms.txt", "/openapi.json", "/privacy", "/support"];
+  return sitemapFor(origin(c), prefixForHost(c));
+}
+
+/**
+ * The same file, for a named host rather than the one that asked.
+ *
+ * The host matters: a sitemap listing another host's urls is a sitemap whose every
+ * entry a map then discards as off-site.
+ */
+export function sitemapFor(base: string, prefix: string): string {
+  const urls = ["/", `${prefix}/scrape`, "/llms.txt", "/openapi.json", "/privacy", "/support"];
   return `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${urls.map((u) => `  <url><loc>${base}${u === "/" ? "/" : u}</loc></url>`).join("\n")}

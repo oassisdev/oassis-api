@@ -29,7 +29,19 @@ export interface MapResult {
   sitemaps: string[];
 }
 
-async function fetchText(url: string): Promise<string | null> {
+/**
+ * Answers a url this map needs, in text.
+ *
+ * **A Worker cannot fetch its own hostname**: the request loops back into the same
+ * Worker and never resolves, so mapping our own site came back empty while every
+ * other site worked. `served` lets the caller answer for the hosts we serve from the
+ * same code that serves them, with no request leaving at all.
+ */
+export type LocalText = (url: string) => string | null;
+
+async function fetchText(url: string, served?: LocalText): Promise<string | null> {
+  const local = served?.(url);
+  if (local !== null && local !== undefined) return local;
   try {
     const res = await fetch(url, {
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
@@ -43,8 +55,8 @@ async function fetchText(url: string): Promise<string | null> {
 }
 
 /** Sitemaps declared in robots.txt, falling back to the conventional location. */
-async function findSitemaps(origin: string): Promise<string[]> {
-  const robots = await fetchText(`${origin}/robots.txt`);
+async function findSitemaps(origin: string, served?: LocalText): Promise<string[]> {
+  const robots = await fetchText(`${origin}/robots.txt`, served);
   const declared = robots
     ? [...robots.matchAll(/^\s*sitemap:\s*(\S+)/gim)].map((m) => m[1]!).slice(0, MAX_SITEMAPS)
     : [];
@@ -68,14 +80,15 @@ async function urlsFromSitemaps(
   origin: string,
   keep: (url: string) => string | null,
   want: number,
+  served?: LocalText,
 ): Promise<{ urls: string[]; seen: string[] }> {
   const seen: string[] = [];
   const kept = new Set<string>();
-  const queue = [...(await findSitemaps(origin))];
+  const queue = [...(await findSitemaps(origin, served))];
 
   while (queue.length > 0 && kept.size < want && seen.length < MAX_SITEMAPS) {
     const sitemap = queue.shift() as string;
-    const xml = await fetchText(sitemap);
+    const xml = await fetchText(sitemap, served);
     if (!xml) continue;
     seen.push(sitemap);
 
@@ -128,6 +141,7 @@ export function keepUrl(candidate: string, req: MapRequest): string | null {
 export async function mapSite(
   req: MapRequest,
   linksFromPage: () => Promise<string[]>,
+  served?: LocalText,
 ): Promise<MapResult> {
   const origin = new URL(req.url).origin;
   const found = new Set<string>();
@@ -135,7 +149,7 @@ export async function mapSite(
 
   // The page can add urls the sitemap does not list, so the sitemap is asked for a
   // little more than the limit when the page is coming too.
-  const sitemap = await urlsFromSitemaps(origin, (u) => keepUrl(u, req), req.limit);
+  const sitemap = await urlsFromSitemaps(origin, (u) => keepUrl(u, req), req.limit, served);
   for (const candidate of sitemap.urls) {
     if (!found.has(candidate)) {
       found.add(candidate);

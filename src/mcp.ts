@@ -50,6 +50,7 @@ import {
 } from "./free-tier";
 import type { FreeCall, FreeLeft } from "./free-tier";
 import { origin } from "./http";
+import { servedText } from "./landing";
 import { VERSION } from "./version";
 import { feedbackRequest } from "./feedback";
 import { mapSite } from "./map";
@@ -111,7 +112,7 @@ const TOOLS = [
       openWorldHint: true,
     },
     description:
-      "Processes a page and returns every output you ask for at once: markdown, html, links, screenshot, PDF, accessibility tree, elements by selector, AI-structured data, and `controls` (what can be clicked). One call, and a partial failure does not void the rest. From $0.001 per output. A url pointing at a PDF, Word, Excel or CSV file is converted to markdown instead, with no browser, for $0.002.",
+      "Processes a page and returns every output you ask for at once: markdown, html, links, screenshot, PDF, accessibility tree, elements by selector, AI-structured data, and `controls` (what can be clicked). One call, and a partial failure does not void the rest. From $0.001 per output. A url pointing at a PDF, Word, Excel or CSV file is converted to markdown instead, with no browser, for $0.002. Reference for the oassis API: https://oassis.dev/openapi.json",
     inputSchema: {
       type: "object",
       properties: { ...commonSchema, html: { type: "string", description: "Raw HTML instead of `url`." } },
@@ -128,7 +129,7 @@ const TOOLS = [
       openWorldHint: true,
     },
     description:
-      "Opens a browser on a page and leaves it open, returning the map of controls. Use it when something has to be FILLED IN or CLICKED, not just read: inside the session the `controls` references keep working and you can act on the same state. $0.005 plus the outputs. Close it with web_session_close when you are done.",
+      "Opens a browser on a page and leaves it open, returning the map of controls. Use it when something has to be FILLED IN or CLICKED, not just read: inside the session the `controls` references keep working and you can act on the same state. $0.005 plus the outputs. Close it with web_session_close when you are done. Reference for the oassis API: https://oassis.dev/openapi.json",
     inputSchema: { type: "object", properties: commonSchema, required: ["url"] },
   },
   {
@@ -141,7 +142,7 @@ const TOOLS = [
       openWorldHint: true,
     },
     description:
-      "Runs actions against an open session and returns the resulting state. Actions: {navigate}, {click:{ref}}, {type:{ref,text,clear}}, {select:{ref,value}}, {press}, {scroll}, {wait}, {back}. The `ref` is the one `controls` gave you. It stops at the first failure and tells you where. $0.0005 per action.",
+      "Runs actions against an open session and returns the resulting state. Actions: {navigate}, {click:{ref}}, {type:{ref,text,clear}}, {select:{ref,value}}, {press}, {scroll}, {wait}, {back}. The `ref` is the one `controls` gave you. It stops at the first failure and tells you where. $0.0005 per action. Reference for the oassis API: https://oassis.dev/openapi.json",
     inputSchema: {
       type: "object",
       properties: {
@@ -211,7 +212,7 @@ const TOOLS = [
       openWorldHint: true,
     },
     description:
-      "Every url of a site, fast and cheap: its sitemap plus, optionally, the links on the page. Use it BEFORE crawling, to see what is there and decide what is worth reading. $0.0003 with `includePage: false` (no browser at all), $0.0015 with the page.",
+      "Every url of a site, fast and cheap: its sitemap plus, optionally, the links on the page. Use it BEFORE crawling, to see what is there and decide what is worth reading. $0.0003 with `includePage: false` (no browser at all), $0.0015 with the page. Reference for the oassis API: https://oassis.dev/openapi.json",
     inputSchema: {
       type: "object",
       properties: {
@@ -236,7 +237,7 @@ const TOOLS = [
       openWorldHint: true,
     },
     description:
-      "Follows a site's links and reads every page. Returns a jobId; poll it with web_crawl_status. Charged up front for the pages it is allowed to read (`limit`), and the pages it never reads are refunded. Use web_map first if you only need the urls.",
+      "Follows a site's links and reads every page. Returns a jobId; poll it with web_crawl_status. Charged up front for the pages it is allowed to read (`limit`), and the pages it never reads are refunded. Use web_map first if you only need the urls. Reference for the oassis API: https://oassis.dev/openapi.json",
     inputSchema: {
       type: "object",
       properties: {
@@ -307,7 +308,7 @@ const TOOLS = [
       openWorldHint: false,
     },
     description:
-      "Tell us an answer was good or bad. FREE. Use it when a result is wrong — empty markdown, a control map missing a button, data that does not match the page — with the url or the jobId so it can be reproduced. It is the only way we learn that we read a page badly: our logs cannot tell that apart from a page that is simply like that.",
+      "Tell us an answer was good or bad. FREE. Use it when a result is wrong — empty markdown, a control map missing a button, data that does not match the page — with the url or the jobId so it can be reproduced. It is the only way we learn that we read a page badly: our logs cannot tell that apart from a page that is simply like that. Reference for the oassis API: https://oassis.dev/openapi.json",
     inputSchema: {
       type: "object",
       properties: {
@@ -745,7 +746,7 @@ async function callTool(
           new QuickActionsRenderer(c.env.BROWSER),
         );
         return Array.isArray(page.data.links) ? (page.data.links as string[]) : [];
-      });
+      }, servedText(c));
       return finish(JSON.stringify(res));
     }
 
