@@ -6,6 +6,14 @@
   "compatibility_date": "2026-09-01",
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
+  /**
+   * The icon ships inside the bundle: four small files, so the mark is served by the
+   * same Worker as everything else and never depends on a second origin.
+   */
+  "rules": [
+    { "type": "Text", "globs": ["**/*.svg"] },
+    { "type": "Data", "globs": ["**/*.png", "**/*.ico"] }
+  ],
   // No API token: Quick Actions go through the binding.
   // `remote: true` is mandatory — quickAction() does not exist in wrangler dev's
   // local mode, and without it you get: The RPC receiver does not implement the

@@ -150,3 +150,33 @@ describe("billing over MCP", () => {
     expect(error.code).toBe(-32602);
   });
 });
+
+describe("what each tool admits about itself", () => {
+  /**
+   * Annotations are how a client decides whether a call needs the user's say-so, and how a
+   * directory decides whether to call it at all. Without them every tool of ours was filed
+   * as "access: unknown" — their words for it: a worse entry.
+   */
+  it("annotates every tool", async () => {
+    const r = await rpc({ jsonrpc: "2.0", id: 90, method: "tools/list" });
+    const { result } = (await r.json()) as any;
+    for (const t of result.tools) {
+      expect(t.annotations, t.name).toBeDefined();
+      expect(typeof t.annotations.readOnlyHint, t.name).toBe("boolean");
+      expect(typeof t.annotations.openWorldHint, t.name).toBe("boolean");
+      expect(t.annotations.title, t.name).toBeTruthy();
+    }
+  });
+
+  it("calls read-only only what changes nothing", async () => {
+    const r = await rpc({ jsonrpc: "2.0", id: 91, method: "tools/list" });
+    const { result } = (await r.json()) as any;
+    const readOnly = result.tools
+      .filter((t: any) => t.annotations.readOnlyHint)
+      .map((t: any) => t.name)
+      .sort();
+    // Acting on a page, opening or closing a session, cancelling a job and leaving feedback
+    // all change something. Claiming otherwise would read better and be a lie.
+    expect(readOnly).toEqual(["web_crawl", "web_map", "web_scrape", "web_scrape_batch", "web_search_exa"]);
+  });
+});

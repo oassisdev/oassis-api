@@ -15,6 +15,7 @@
  */
 
 import type { Context } from "hono";
+import { ICON_LINKS } from "./icon";
 import { PER_FORMAT, PRICES, inDollars, mapPrice } from "./billing/prices";
 import { origin, prefixForHost } from "./http";
 import { FREE_EVER, FREE_PER_DAY } from "./free-tier";
@@ -80,6 +81,9 @@ export function landing(c: Context<{ Bindings: Env }>): string {
 <meta property="og:description" content="${escape(DESCRIPTION)}">
 <meta property="og:url" content="${base}/">
 <meta name="twitter:card" content="summary">
+<meta property="og:image" content="${base}/icon-512.png">
+<meta name="twitter:image" content="${base}/icon-512.png">
+${ICON_LINKS}
 <script type="application/ld+json">${jsonLd}</script>
 <style>
   :root { --bg:#0d1117; --panel:#161b22; --line:#30363d; --text:#e6edf3; --dim:#8b949e; --accent:#58a6ff; --ok:#3fb950; }

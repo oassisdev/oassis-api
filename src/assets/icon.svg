@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="oassis">
+  <defs>
+    <linearGradient id="oassisRing" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2dd4bf"/><stop offset="1" stop-color="#0e7490"/>
+    </linearGradient>
+    <linearGradient id="oassisArc" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fbbf24"/><stop offset="1" stop-color="#f97316"/>
+    </linearGradient>
+  </defs>
+  <g stroke="url(#oassisArc)" stroke-width="7.5" stroke-linecap="round" fill="none">
+    <path d="M15 9C5.5 16.5 5.5 47.5 15 55"/>
+    <path d="M49 9c9.5 7.5 9.5 38.5 0 46"/>
+  </g>
+  <circle cx="32" cy="32" r="14" fill="none" stroke="url(#oassisRing)" stroke-width="9"/>
+</svg>

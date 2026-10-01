@@ -49,6 +49,7 @@ import {
   FREE_PER_DAY,
 } from "./free-tier";
 import type { FreeCall, FreeLeft } from "./free-tier";
+import { origin } from "./http";
 import { VERSION } from "./version";
 import { feedbackRequest } from "./feedback";
 import { mapSite } from "./map";
@@ -102,6 +103,13 @@ const commonSchema = {
 const TOOLS = [
   {
     name: "web_scrape",
+    annotations: {
+      title: "Read a page or a document",
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
     description:
       "Processes a page and returns every output you ask for at once: markdown, html, links, screenshot, PDF, accessibility tree, elements by selector, AI-structured data, and `controls` (what can be clicked). One call, and a partial failure does not void the rest. From $0.001 per output. A url pointing at a PDF, Word, Excel or CSV file is converted to markdown instead, with no browser, for $0.002.",
     inputSchema: {
@@ -112,12 +120,26 @@ const TOOLS = [
   },
   {
     name: "web_session_open",
+    annotations: {
+      title: "Open a browser session",
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
     description:
       "Opens a browser on a page and leaves it open, returning the map of controls. Use it when something has to be FILLED IN or CLICKED, not just read: inside the session the `controls` references keep working and you can act on the same state. $0.005 plus the outputs. Close it with web_session_close when you are done.",
     inputSchema: { type: "object", properties: commonSchema, required: ["url"] },
   },
   {
     name: "web_act",
+    annotations: {
+      title: "Act on an open page",
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
     description:
       "Runs actions against an open session and returns the resulting state. Actions: {navigate}, {click:{ref}}, {type:{ref,text,clear}}, {select:{ref,value}}, {press}, {scroll}, {wait}, {back}. The `ref` is the one `controls` gave you. It stops at the first failure and tells you where. $0.0005 per action.",
     inputSchema: {
@@ -132,6 +154,13 @@ const TOOLS = [
   },
   {
     name: "web_scrape_batch",
+    annotations: {
+      title: "Read a list of urls",
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
     description:
       "A batch OF SCRAPES: reads a list of urls YOU give it (2 to 50, from any sites) and returns a jobId. It discovers nothing on its own — for that use web_crawl. Charged up front per url; urls that fail and urls served from the cache are refunded. Poll it with web_batch_status.",
     inputSchema: {
@@ -153,6 +182,13 @@ const TOOLS = [
   },
   {
     name: "web_batch_status",
+    annotations: {
+      title: "Check or cancel a batch",
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
     description:
       "Checks a batch of scrapes: status, how many are done, and the results. Free. Pass `cancel: true` to stop it and get the urls it never read refunded.",
     inputSchema: {
@@ -167,6 +203,13 @@ const TOOLS = [
   },
   {
     name: "web_map",
+    annotations: {
+      title: "List a site's urls",
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
     description:
       "Every url of a site, fast and cheap: its sitemap plus, optionally, the links on the page. Use it BEFORE crawling, to see what is there and decide what is worth reading. $0.0003 with `includePage: false` (no browser at all), $0.0015 with the page.",
     inputSchema: {
@@ -185,6 +228,13 @@ const TOOLS = [
   },
   {
     name: "web_crawl",
+    annotations: {
+      title: "Crawl a site",
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
     description:
       "Follows a site's links and reads every page. Returns a jobId; poll it with web_crawl_status. Charged up front for the pages it is allowed to read (`limit`), and the pages it never reads are refunded. Use web_map first if you only need the urls.",
     inputSchema: {
@@ -204,6 +254,13 @@ const TOOLS = [
   },
   {
     name: "web_crawl_status",
+    annotations: {
+      title: "Check or cancel a crawl",
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
     description:
       "Checks a crawl: status, pages read, discovered and still queued, and the pages themselves. Free. Pass `cancel: true` to stop it and get the unread pages refunded.",
     inputSchema: {
@@ -218,6 +275,13 @@ const TOOLS = [
   },
   {
     name: "web_search_exa",
+    annotations: {
+      title: "Search the web",
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
     description:
       "Search the web with Exa's index: a query instead of a url, for when you do not know where to look. Returns title, url and a snippet per result. To read the pages, pass the urls to web_scrape_batch. The engine is named because the price is Exa's, passed through with no markup and read from its own payment challenge on every call — today $0.007 per search.",
     inputSchema: {
@@ -235,6 +299,13 @@ const TOOLS = [
   },
   {
     name: "web_feedback",
+    annotations: {
+      title: "Report a bad answer",
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: false,
+    },
     description:
       "Tell us an answer was good or bad. FREE. Use it when a result is wrong — empty markdown, a control map missing a button, data that does not match the page — with the url or the jobId so it can be reproduced. It is the only way we learn that we read a page badly: our logs cannot tell that apart from a page that is simply like that.",
     inputSchema: {
@@ -251,6 +322,13 @@ const TOOLS = [
   },
   {
     name: "web_session_close",
+    annotations: {
+      title: "Close a session",
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
     description:
       "Closes a session and stops billing browser time. Free. If you do not close it, it closes itself after a minute without use.",
     inputSchema: {
@@ -298,7 +376,13 @@ mcp.post("/mcp", async (c) => {
            * Announcing a different name and version here meant a client saw one server
            * and the directory that sent it another.
            */
-          serverInfo: { name: "oassis", title: "oassis — web scraping, crawling and browser control for AI agents", version: VERSION },
+          serverInfo: {
+            name: "oassis",
+            title: "oassis — web scraping, crawling and browser control for AI agents",
+            version: VERSION,
+            /** So a client draws the mark instead of guessing at a favicon. */
+            icons: [{ src: `${origin(c)}/icon-512.png`, mimeType: "image/png", sizes: ["512x512"] }],
+          },
           instructions: [
             "Web extraction and browser control for agents.",
             `You can try it with no key and no account: ${FREE_PER_DAY.scrape} page or document reads a day, ${FREE_PER_DAY.map} site listings a day, and — once, ever — one browser session with ${FREE_EVER.actions} actions and ${FREE_EVER.searches} searches. Crawls, batches and AI extraction need a key. Call GET /mcp for the table.`,

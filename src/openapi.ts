@@ -147,6 +147,7 @@ export function openapi(c: Context<{ Bindings: Env }>): Record<string, unknown> 
         "Pay per call with a wallet and no account at all (x402, USDC on Base), or with an API key. " +
         "POST any route unpaid and it answers 402 with the exact price of that call.",
       "x-mcp": `${base}/mcp`,
+      "x-logo": { url: `${origin(c)}/icon-512.png`, altText: "oassis" },
     },
     servers: [{ url: base }],
     /** Where a person goes. The rest of this document is for whatever is reading it. */
