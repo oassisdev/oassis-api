@@ -12,6 +12,7 @@ import type { Context } from "hono";
 import { ICON_LINKS } from "./icon";
 import { STYLE } from "./landing";
 import { origin } from "./http";
+import { TRACE_CAP, TRACE_DAYS } from "./traces";
 import type { Env } from "./types";
 
 /** Where a person writes when something is wrong. One address, answered by a person. */
@@ -83,6 +84,10 @@ changes when the system does.</p>
 <tr><td>Feedback you choose to send</td><td>To fix what is broken</td><td>Until acted on</td></tr>
 <tr><td>Rendered pages, cached</td><td>So a repeat read is cheaper for you</td><td>Short-lived, then discarded</td></tr>
 <tr><td>A one-way fingerprint of the caller's IP address</td><td>To count free calls without accounts</td><td>Rolling daily counters</td></tr>
+<tr><td>A short request log: time, route, status, how long it took, your IP, your
+user-agent, and a truncated copy of the request and the answer</td><td>So a call can be
+explained when something goes wrong</td><td>The most recent ${TRACE_CAP.toLocaleString("en")}
+requests, and never more than ${TRACE_DAYS} days</td></tr>
 </tbody>
 </table>
 
@@ -92,6 +97,15 @@ changes when the system does.</p>
 IP address</strong>, truncated. We do this so a free allowance can exist at all without
 asking anyone to sign up. <strong>The address itself is not stored</strong> in that counter,
 and the hash cannot be turned back into it.</p>
+
+<h3>About the request log</h3>
+
+<p>We keep a short operational log of recent requests so that a call can be explained when
+something goes wrong. It is <strong>bounded in both directions</strong>: at most
+${TRACE_CAP.toLocaleString("en")} requests are kept at any time, nothing older than
+${TRACE_DAYS} days survives, and the bodies are stored truncated — enough to see what was
+asked for, not a copy of the answer. Large responses are recorded as a size and never read.
+It is read by us, to run the service, and by nobody else.</p>
 
 <h3>About the pages you ask us to fetch</h3>
 

@@ -45,6 +45,7 @@ import type { CrawlMessage } from "./jobs/crawl";
 import { mapSite } from "./map";
 import { landing, robotsTxt, sitemapXml, servedText } from "./landing";
 import { mountIcon } from "./icon";
+import { mountTraceLog } from "./traces";
 import { privacyPage, supportPage } from "./legal";
 import { actDoc, batchDoc, crawlDoc, doc, mapDoc, searchDoc, sessionDoc } from "./docs";
 import { llmsTxt, openapi } from "./openapi";
@@ -56,6 +57,16 @@ export { BatchJob } from "./jobs/do";
 export { CrawlJob } from "./jobs/crawl";
 
 const app = new Hono<{ Bindings: Env }>();
+
+/**
+ * The call log, before everything.
+ *
+ * It was mounted after the billing guard and the MCP route, so it saw neither: a 402 is
+ * answered by the guard without ever calling the next handler, and /mcp was matched by a
+ * route registered earlier. The log recorded free GETs and nothing else — which is the
+ * opposite of what it is for.
+ */
+mountTraceLog(app);
 
 // Billing first: no product route does any work unpaid.
 app.use(billing);
