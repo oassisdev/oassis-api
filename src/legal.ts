@@ -15,7 +15,7 @@ import { origin } from "./http";
 import type { Env } from "./types";
 
 /** Where a person writes when something is wrong. One address, answered by a person. */
-export const SUPPORT_EMAIL = "oassistech@gmail.com";
+export const SUPPORT_EMAIL = "support@oassis.dev";
 
 const page = (c: Context<{ Bindings: Env }>, title: string, description: string, body: string) => {
   const base = origin(c);

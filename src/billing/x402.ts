@@ -49,7 +49,7 @@ const SMALLEST_CALL: Record<Route, Record<string, unknown>> = {
   scrape: { formats: ["markdown"] },
   session: {},
   act: { actions: [{ press: "Enter" }] },
-  batch: { urls: ["https://example.com", "https://example.org"] },
+  batch: { urls: ["https://oassis.dev", "https://oassis.dev/privacy"] },
   map: { includePage: false },
   crawl: { limit: 1 },
   search: { query: "", limit: 10 },

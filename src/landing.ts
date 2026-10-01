@@ -224,7 +224,7 @@ and a request we cannot serve is never charged for.</p>
 
 <pre><code>curl -X POST ${api}${prefix}/scrape \\
   -H 'content-type: application/json' \\
-  -d '{"url":"https://example.com","formats":["markdown","controls"]}'</code></pre>
+  -d '{"url":"https://oassis.dev","formats":["markdown","controls"]}'</code></pre>
 
 <p>That answers <code>402</code> with the exact price of that call. Pay it with a wallet and
 repeat the request, or send an API key and it is charged to a prepaid balance.</p>

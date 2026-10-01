@@ -48,7 +48,7 @@ export const doc = (c: Context<{ Bindings: Env }>) => ({
     "Send `maxAge` to reuse a recent render: `metadata.cached` lists which formats came from the cache, and those are priced at $0.0002. Requests carrying cookies, auth or custom headers are never cached, because the cache is shared.",
   ],
   example: {
-    url: "https://example.com/product",
+    url: "https://oassis.dev",
     formats: ["markdown", "links", "pdf", "json"],
     json: { prompt: "Product name, price and availability" },
     pdf: { format: "a4" },
