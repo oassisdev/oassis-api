@@ -46,7 +46,7 @@ import { mapSite } from "./map";
 import { landing, robotsTxt, sitemapXml, servedText } from "./landing";
 import { mountIcon } from "./icon";
 import { mountTraceLog } from "./traces";
-import { privacyPage, supportPage } from "./legal";
+import { privacyPage, supportPage, termsPage } from "./legal";
 import { actDoc, batchDoc, crawlDoc, doc, mapDoc, searchDoc, sessionDoc } from "./docs";
 import { llmsTxt, openapi } from "./openapi";
 import { mountBackoffice } from "./private/backoffice";
@@ -559,6 +559,7 @@ const htmlPage = (body: string) =>
   });
 app.get("/privacy", (c) => htmlPage(privacyPage(c)));
 app.get("/support", (c) => htmlPage(supportPage(c)));
+app.get("/terms", (c) => htmlPage(termsPage(c)));
 
 app.get("/robots.txt", (c) =>
   c.text(robotsTxt(c), 200, { "cache-control": "public, max-age=86400", "content-type": "text/plain; charset=utf-8" }),

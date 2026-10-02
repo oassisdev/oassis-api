@@ -37,6 +37,7 @@ ${STYLE}
 ${body}
 <footer>
   oassis · <a href="${base}/privacy">Privacy</a> ·
+  <a href="${base}/terms">Terms</a> ·
   <a href="${base}/support">Support</a> ·
   <a href="${base}/llms.txt">llms.txt</a>
 </footer>
@@ -146,6 +147,103 @@ not listed above.</p>
 <h2>Changes</h2>
 
 <p>If this policy changes, the date at the top changes with it.</p>
+
+<h2>Contact</h2>
+
+<p>Write to <a href="mailto:${SUPPORT_EMAIL}">${SUPPORT_EMAIL}</a>. A person reads it.</p>
+`,
+  );
+}
+
+export function termsPage(c: Context<{ Bindings: Env }>): string {
+  const base = origin(c);
+  return page(
+    c,
+    "Terms",
+    "The terms for using the oassis web scraping and crawling API: what you may ask it to fetch, how billing works, and what we do not promise.",
+    `
+<h1>Terms of service</h1>
+
+<p class="muted">Last updated 2 October 2026.</p>
+
+<p>These terms cover the oassis API at <code>${base}</code> and the MCP server at
+<code>${base}/mcp</code>. Using either means accepting them. They are written to be read, not
+to be survived.</p>
+
+<h2>What the service does</h2>
+
+<p>oassis fetches web pages and documents you name, converts them, lists and crawls sites you
+name, drives a browser session on your behalf, and passes a search query to a search provider.
+It acts on <strong>your</strong> instructions, as your agent, against the urls you choose.</p>
+
+<h2>What you are responsible for</h2>
+
+<p>This is the part that matters most, so it is not buried.</p>
+
+<ul>
+  <li><strong>You must have the right to access what you ask for.</strong> You are responsible
+  for complying with the terms, licences and access rules of the sites you point us at, and for
+  any law that applies to you or to that content. Asking us to fetch a page does not transfer
+  that responsibility to us, and it does not grant you rights you did not already have.</li>
+  <li><strong>robots.txt.</strong> Free calls honour it: those requests leave our
+  infrastructure with no account behind them, so they answer to us. <strong>Paid calls do
+  not</strong> — a paying caller is identified and answers for their own access. If you need
+  robots.txt enforced on your paid traffic, write to us.</li>
+  <li><strong>No circumvention.</strong> Do not use oassis to defeat a paywall, a login, a
+  rate limit, a block or any other access control, or to collect personal data unlawfully.</li>
+  <li><strong>No overwhelming anybody.</strong> Including us. Crawls and batches exist so that
+  volume is paced and paid for; do not route around them.</li>
+</ul>
+
+<p>We may refuse or stop a request, and suspend an account, when it breaks these rules. We
+would rather write to you first, and usually will.</p>
+
+<h2>Paying</h2>
+
+<ul>
+  <li><strong>Per call, quoted first.</strong> The price of a call is in the <code>402</code>
+  answer before any work happens, and it is charged after the work happens.</li>
+  <li><strong>Work that does not happen is not charged.</strong> A request we cannot serve
+  costs nothing, and a crawl or batch you cancel refunds the pages it never read. You do not
+  have to ask.</li>
+  <li><strong>A balance does not expire</strong> and there is no monthly fee. Prepaid balance
+  is not otherwise refundable.</li>
+  <li><strong>Wallet payments are final.</strong> A payment settled on a public blockchain
+  cannot be reversed by us. Mistakes are handled as credit, not as a chain transaction.</li>
+  <li><strong>Prices can change.</strong> The price that applies is the one quoted in the
+  challenge for that call, which is why we quote it on every single one.</li>
+</ul>
+
+<h2>What we do not promise</h2>
+
+<p>The service is provided as it is. <strong>We do not promise an uptime figure, a response
+time, or that any particular site will be readable</strong> — sites change, block automation,
+or go down, and that is outside our control. We do not promise the content we return is
+accurate, complete or current: it is what the page said when we read it.</p>
+
+<p>To the extent the law allows, we are not liable for indirect or consequential loss, and our
+total liability for any claim is limited to what you paid us in the three months before it.
+Nothing here limits liability that cannot be limited.</p>
+
+<h2>Your content and ours</h2>
+
+<p>You keep whatever rights you have in what you ask for and what comes back. We claim no
+ownership of it, and we do not build a corpus out of what our users read — see the
+<a href="${base}/privacy">privacy policy</a> for what we keep and for how long.</p>
+
+<p>The source code is published under the Elastic License 2.0, which governs the code and not
+this service. Using the API grants you no licence to the code beyond that.</p>
+
+<h2>Ending it</h2>
+
+<p>You can stop at any time; there is nothing to cancel. We can suspend or end an account that
+breaks these terms, and we will refund any unused prepaid balance unless the reason for the
+suspension was fraud or abuse.</p>
+
+<h2>Changes</h2>
+
+<p>If these terms change, the date at the top changes with them. A change that materially
+reduces what you get applies from when it is published, not retroactively.</p>
 
 <h2>Contact</h2>
 

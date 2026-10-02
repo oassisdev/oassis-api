@@ -282,6 +282,7 @@ does not happen. A request we cannot serve is never charged for.</p>
   <a href="${api}/llms.txt">llms.txt</a> ·
   <a href="${api}/openapi.json">OpenAPI</a> ·
   <a href="${base}/privacy">Privacy</a> ·
+  <a href="${base}/terms">Terms</a> ·
   <a href="${base}/support">Support</a>
 </footer>
 
@@ -353,7 +354,7 @@ export function sitemapXml(c: Context<{ Bindings: Env }>): string {
  * entry a map then discards as off-site.
  */
 export function sitemapFor(base: string, prefix: string): string {
-  const urls = ["/", `${prefix}/scrape`, "/llms.txt", "/openapi.json", "/privacy", "/support"];
+  const urls = ["/", `${prefix}/scrape`, "/llms.txt", "/openapi.json", "/privacy", "/terms", "/support"];
   return `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${urls.map((u) => `  <url><loc>${base}${u === "/" ? "/" : u}</loc></url>`).join("\n")}

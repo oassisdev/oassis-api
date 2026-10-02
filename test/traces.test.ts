@@ -94,7 +94,7 @@ describe("what the log has to catch", () => {
     const { env, sql } = db();
     const app = new Hono<{ Bindings: Env }>();
     mountTraceLog(app);
-    app.use("*", (c) => c.json({ error: "payment required" }, 402));
+    app.use("*", async (c) => c.json({ error: "payment required" }, 402));
     app.post("/web/v1/map", (c) => c.text("never reached"));
 
     const res = await app.fetch(
