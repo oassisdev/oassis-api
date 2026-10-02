@@ -1,0 +1,11 @@
+{
+  "name": "oassis",
+  "version": "1.0.1",
+  "description": "Read any page or document as markdown, map and crawl whole sites, and drive a real browser. No API key and no signup to start.",
+  "mcpServers": {
+    "oassis": {
+      "description": "Web scraping, crawling and browser control for agents. Scrape a page or a PDF to markdown, get a map of every link, button and field on it, list a site's urls, crawl it, and keep a browser session open to click and type. Works with no key: a keyless caller gets a free daily allowance.",
+      "httpUrl": "https://api.oassis.dev/mcp"
+    }
+  }
+}
