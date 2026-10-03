@@ -726,10 +726,24 @@ async function callTool(
     }
   };
 
+  /**
+   * Arguments that do not parse: nothing was attempted, so nothing is owed.
+   *
+   * Over HTTP the guard validates before charging — "nothing invalid ever reaches a
+   * charge". Over MCP the charge happens first, because the price depends on the
+   * arguments, and these eight rejections kept the money: asking for a batch of one url,
+   * which the schema refuses, cost $0.001 for a request that never ran. The two doors
+   * disagreed, again.
+   */
+  const rechazar = async (issues: Parameters<typeof issuesText>[0]) => {
+    await giveBack("refund: the request was not valid");
+    return finish(issuesText(issues), true);
+  };
+
   try {
     if (name === "web_scrape") {
       const parsed = scrapeRequest.safeParse(args);
-      if (!parsed.success) return finish(issuesText(parsed.error.issues), true);
+      if (!parsed.success) return rechazar(parsed.error.issues);
       /**
        * A free answer accepts an hour-old one from the cache. It is the difference between a
        * swarm asking for the same popular pages costing one render or thousands, and an hour
@@ -751,7 +765,7 @@ async function callTool(
 
     if (name === "web_session_open") {
       const parsed = sessionRequest.safeParse(args);
-      if (!parsed.success) return finish(issuesText(parsed.error.issues), true);
+      if (!parsed.success) return rechazar(parsed.error.issues);
       const sessionId = c.env.SESSIONS.newUniqueId().toString();
       await registerSession(c.env.BILLING, sessionId, payer, payer ? "key" : "free");
       const res = await callSession(c, sessionId, { kind: "open", req: parsed.data });
@@ -760,7 +774,7 @@ async function callTool(
 
     if (name === "web_search_exa") {
       const parsed = searchRequest.safeParse(args);
-      if (!parsed.success) return finish(issuesText(parsed.error.issues), true);
+      if (!parsed.success) return rechazar(parsed.error.issues);
       try {
         const { results } = await search(c.env, parsed.data);
         return finish(JSON.stringify({ engine: ENGINE, results }));
@@ -775,7 +789,7 @@ async function callTool(
 
     if (name === "web_scrape_batch") {
       const parsed = batchRequest.safeParse(args);
-      if (!parsed.success) return finish(issuesText(parsed.error.issues), true);
+      if (!parsed.success) return rechazar(parsed.error.issues);
       const jobId = c.env.JOBS.newUniqueId().toString();
       await registerJob(c.env.BILLING, jobId, payer, payer ? "key" : "free", parsed.data.urls.length, micros);
       const stub = c.env.JOBS.get(c.env.JOBS.idFromString(jobId));
@@ -794,7 +808,7 @@ async function callTool(
 
     if (name === "web_map") {
       const parsed = mapRequest.safeParse(args);
-      if (!parsed.success) return finish(issuesText(parsed.error.issues), true);
+      if (!parsed.success) return rechazar(parsed.error.issues);
       const res = await mapSite(parsed.data, async () => {
         const page = await scrape(
           { ...parsed.data, formats: ["links"], binaryAs: "base64" } as never,
@@ -809,7 +823,7 @@ async function callTool(
 
     if (name === "web_crawl") {
       const parsed = crawlRequest.safeParse(args);
-      if (!parsed.success) return finish(issuesText(parsed.error.issues), true);
+      if (!parsed.success) return rechazar(parsed.error.issues);
       const jobId = c.env.CRAWLS.newUniqueId().toString();
       await registerJob(c.env.BILLING, jobId, payer, payer ? "key" : "free", parsed.data.limit, micros);
       const stub = c.env.CRAWLS.get(c.env.CRAWLS.idFromString(jobId));
@@ -827,10 +841,10 @@ async function callTool(
     }
 
     const parsed = actRequest.safeParse(args);
-    if (!parsed.success) return finish(issuesText(parsed.error.issues), true);
+    if (!parsed.success) return rechazar(parsed.error.issues);
     const { sessionId, actions, ...rest } = parsed.data;
     const req = sessionRequest.safeParse({ ...rest, url: rest.url ?? "https://placeholder.invalid" });
-    if (!req.success) return finish(issuesText(req.error.issues), true);
+    if (!req.success) return rechazar(req.error.issues);
     const res = await callSession(c, sessionId, { kind: "act", actions, req: req.data });
     const texto = await res.text();
 
