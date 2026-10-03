@@ -8,6 +8,8 @@
  */
 
 import type { Format, Renderer, ScrapeResponse } from "./types";
+import { markdownFromHtml } from "./repair";
+import { wordsRunTogether } from "./run-together";
 import { RenderError, type Action } from "./types";
 import type { ScrapeRequest } from "./schema";
 import { CONTROL_SELECTORS, mapControls } from "./controls";
@@ -143,7 +145,7 @@ export async function read(
     if (byExtension) return readDocument(env, req, byExtension);
   }
 
-  const rendered = await scrape(req, renderer);
+  const rendered = await scrape(req, renderer, markdownFromHtml(env));
   if (!req.url || !isEmpty(rendered)) return rendered;
 
   const contentType = await contentTypeOf(req.url);
@@ -163,7 +165,18 @@ function isEmpty(res: ScrapeResponse): boolean {
   return text.trim().length === 0;
 }
 
-export async function scrape(req: ScrapeRequest, renderer: Renderer): Promise<ScrapeResponse> {
+/**
+ * Converts html to markdown when the renderer's own conversion came back with the words
+ * stuck together. The caller supplies it because it needs the AI binding, which this
+ * module does not have and should not grow a reason to take.
+ */
+export type RepairMarkdown = (html: string) => Promise<string | null>;
+
+export async function scrape(
+  req: ScrapeRequest,
+  renderer: Renderer,
+  repair?: RepairMarkdown,
+): Promise<ScrapeResponse> {
   const started = Date.now();
   const plan = renderPlan(req);
   const formats = plan.map((p) => p.format);
@@ -199,6 +212,34 @@ export async function scrape(req: ScrapeRequest, renderer: Renderer): Promise<Sc
     else errors[d.format] = d.message;
   }
 
+  /**
+   * Second chance for a page whose words came back stuck together.
+   *
+   * The spaces survive in the html — it is the conversion that drops them — so the fix is
+   * to convert it ourselves. Costs us one more render and the caller nothing: they asked
+   * for one output and they are charged for one output.
+   */
+  let repaired: Format[] | undefined;
+  if (repair && typeof data.markdown === "string" && wordsRunTogether(data.markdown)) {
+    try {
+      let html = typeof data.html === "string" ? data.html : null;
+      if (!html) {
+        const r = await renderer.run(ACTION_FOR.html, optionsFor("html", req));
+        browserMsUsed += r.browserMs;
+        if (!r.cached) renders += 1;
+        html = typeof r.value === "string" ? r.value : null;
+      }
+      const fixed = html ? await repair(html) : null;
+      // Only if it actually fixed it: a second mangled answer is not an improvement.
+      if (fixed && fixed.trim() && !wordsRunTogether(fixed)) {
+        data.markdown = fixed;
+        repaired = ["markdown"];
+      }
+    } catch {
+      // The first answer stands. A failed repair must not take the page down with it.
+    }
+  }
+
   const title = titleFrom(data);
   return {
     success: Object.keys(data).length > 0,
@@ -209,6 +250,7 @@ export async function scrape(req: ScrapeRequest, renderer: Renderer): Promise<Sc
       // Only what actually reached a browser is a render.
       renders,
       ...(cached.length ? { cached } : {}),
+      ...(repaired ? { repaired } : {}),
       browserMsUsed,
       ms: Date.now() - started,
       ...(title ? { title } : {}),
