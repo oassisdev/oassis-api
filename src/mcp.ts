@@ -66,6 +66,22 @@ const noteFor = (left: FreeLeft): string =>
 /** Version of the protocol we speak. */
 const PROTOCOL = "2025-06-18";
 
+/**
+ * Versions we answer in, newest first.
+ *
+ * The spec is explicit: if the server supports the version the client asked for, it
+ * **must** answer with that same one, and only otherwise with one of its own. We
+ * answered `2025-06-18` to everybody — a client asking for `2025-03-26` was told a
+ * version it had not asked for and is supposed to hang up, even though nothing in this
+ * server needs the newer one. A directory validator asks exactly that question.
+ */
+const SPOKEN: readonly string[] = [PROTOCOL, "2025-03-26", "2024-11-05"];
+
+/** The version to answer with: theirs when we speak it, ours when we do not. */
+function agreedProtocol(asked: unknown): string {
+  return typeof asked === "string" && SPOKEN.includes(asked) ? asked : PROTOCOL;
+}
+
 interface RpcRequest {
   jsonrpc: "2.0";
   id?: string | number | null;
@@ -372,7 +388,7 @@ mcp.post("/mcp", async (c) => {
         jsonrpc: "2.0",
         id,
         result: {
-          protocolVersion: PROTOCOL,
+          protocolVersion: agreedProtocol((params as { protocolVersion?: unknown })?.protocolVersion),
           // Declaring only tools is what made the directories file this server as
           // incomplete; it also meant a client could not read the catalogue it is told to.
           capabilities: { tools: {}, resources: {}, prompts: {} },
