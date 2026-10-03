@@ -24,7 +24,7 @@ import {
   sessionAccess,
   sessionOwner,
 } from "./billing/accounts";
-import { inDollars, priceOfRequest } from "./billing/prices";
+import { PRICES, inDollars, priceOfRequest } from "./billing/prices";
 import {
   actRequest,
   batchRequest,
@@ -712,9 +712,13 @@ async function callTool(
    * free tier gets its call back. Never throws: a failed give-back must not turn an error
    * the caller can read into a 500 they cannot.
    */
-  const giveBack = async (reason: string) => {
+  /** Gives back the whole charge, or `parte` of it when only some of the work was skipped. */
+  const giveBack = async (reason: string, parte?: number) => {
     if (payer) {
-      await credit(c.env.BILLING, payer, micros, reason).catch(() => null);
+      await credit(c.env.BILLING, payer, parte ?? micros, reason).catch(() => null);
+    } else if (parte !== undefined) {
+      // A free call has no money to return in parts: the allowance is spent per call.
+      return;
     } else if (freeCall) {
       // The note was written when the call was charged, so it has to be written again.
       const left = await releaseFreeCall(c.env, freeCall.caller, freeCall.call).catch(() => null);
@@ -828,7 +832,27 @@ async function callTool(
     const req = sessionRequest.safeParse({ ...rest, url: rest.url ?? "https://placeholder.invalid" });
     if (!req.success) return finish(issuesText(req.error.issues), true);
     const res = await callSession(c, sessionId, { kind: "act", actions, req: req.data });
-    return finish(await res.text(), !res.ok);
+    const texto = await res.text();
+
+    /**
+     * Actions are charged up front, all of them, because that is what lets the price be
+     * quoted before the work. But they stop at the first failure, so a request of twenty
+     * whose first one fails was charged for twenty and did one. The answer says how many
+     * were attempted, and the difference goes back.
+     *
+     * The attempted one stays charged even when it failed: the browser did the work of
+     * trying. What is given back is the work nobody did.
+     */
+    try {
+      const body = JSON.parse(texto) as { actions?: unknown[] };
+      const corridas = Array.isArray(body.actions) ? body.actions.length : actions.length;
+      const sobrantes = actions.length - corridas;
+      if (sobrantes > 0) await giveBack(`refund: ${sobrantes} action(s) never ran`, sobrantes * PRICES.action);
+    } catch {
+      /* an unreadable answer says nothing about how much to give back */
+    }
+
+    return finish(texto, !res.ok);
   } catch (e) {
     console.error(`mcp ${name}: ${e instanceof Error ? e.message : String(e)}`);
     return finish("The call could not be completed.", true);

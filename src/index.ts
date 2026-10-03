@@ -37,7 +37,7 @@ import {
   sessionAccess,
   sessionOwner,
 } from "./billing/accounts";
-import { inDollars } from "./billing/prices";
+import { PRICES, inDollars } from "./billing/prices";
 import { payerFromHeaders, walletIdentity } from "./billing/payer";
 import type { Message } from "./session/do";
 import type { JobMessage } from "./jobs/do";
@@ -177,6 +177,45 @@ for (const route of bothPaths("session")) app.get(route, (c) => cacheableDoc(c, 
  * so the price headers the guard set are copied by hand: otherwise the session
  * routes would be the only ones that do not say what they cost.
  */
+/**
+ * Gives back the actions that never ran.
+ *
+ * `act` is charged for every action in the request, before any of them runs, because
+ * that is what lets the price be quoted up front. But actions stop at the first failure,
+ * so a request of twenty whose first one fails did one action's worth of work and was
+ * charged for twenty. The response says exactly how many were attempted, so the
+ * difference goes back.
+ *
+ * The attempted one is not refunded even when it failed: the browser did the work of
+ * trying. What is refunded is the work nobody did.
+ */
+async function refundUnrunActions(
+  c: Context<{ Bindings: Env }>,
+  pedidas: number,
+  res: Response,
+): Promise<Response> {
+  try {
+    const copia = res.clone();
+    const body = (await copia.json()) as { actions?: unknown[] };
+    const corridas = Array.isArray(body.actions) ? body.actions.length : pedidas;
+    const sobrantes = pedidas - corridas;
+    if (sobrantes > 0) {
+      const micros = sobrantes * PRICES.action;
+      const payer = c.get("payer");
+      if (payer?.account?.id && micros > 0) {
+        await credit(c.env.BILLING, payer.account.id, micros, `refund: ${sobrantes} action(s) never ran`).catch(
+          (e) => console.error(`partial refund failed: ${e}`),
+        );
+        c.header("x-oassis-refunded", inDollars(micros));
+      }
+    }
+  } catch {
+    // An unreadable answer is not a reason to take money that was not earned, but it is
+    // also not enough to know how much: the charge stands and the error is the caller's.
+  }
+  return res;
+}
+
 async function callSession(
   c: Context<{ Bindings: Env }>,
   id: string,
@@ -266,7 +305,8 @@ app.on("POST", bothPaths("act"), async (c) => {
 
   // The placeholder url goes unused: acting never navigates unless a `navigate`
   // action asks for it.
-  return callSession(c, sessionId, { kind: "act", actions, req: req.data });
+  const res = await callSession(c, sessionId, { kind: "act", actions, req: req.data });
+  return refundUnrunActions(c, actions.length, res);
 });
 
 app.on("DELETE", bothPaths("session/:id"), async (c) => {
