@@ -51,6 +51,7 @@ import {
 import type { FreeCall, FreeLeft } from "./free-tier";
 import { origin } from "./http";
 import { servedText } from "./landing";
+import { PROMPTS, RESOURCES, freeLine, readResource } from "./mcp-resources";
 import { VERSION } from "./version";
 import { feedbackRequest } from "./feedback";
 import { mapSite } from "./map";
@@ -371,7 +372,9 @@ mcp.post("/mcp", async (c) => {
         id,
         result: {
           protocolVersion: PROTOCOL,
-          capabilities: { tools: {} },
+          // Declaring only tools is what made the directories file this server as
+          // incomplete; it also meant a client could not read the catalogue it is told to.
+          capabilities: { tools: {}, resources: {}, prompts: {} },
           /**
            * The same identity the official registry lists, `dev.oassis/web` 1.0.0.
            * Announcing a different name and version here meant a client saw one server
@@ -406,6 +409,54 @@ mcp.post("/mcp", async (c) => {
 
     case "tools/call":
       return callTool(c, id, params);
+
+    case "resources/list":
+      return c.json({ jsonrpc: "2.0", id, result: { resources: RESOURCES } });
+
+    case "resources/read": {
+      const uri = String((params as { uri?: unknown })?.uri ?? "");
+      const found = readResource(c, uri);
+      if (!found) return c.json(rpcError(id, -32602, `No resource at ${uri || "(no uri given)"}`));
+      return c.json({
+        jsonrpc: "2.0",
+        id,
+        result: { contents: [{ uri, mimeType: found.mimeType, text: found.text }] },
+      });
+    }
+
+    case "prompts/list":
+      return c.json({
+        jsonrpc: "2.0",
+        id,
+        result: {
+          prompts: PROMPTS(c).map(({ name, title, description, arguments: args }) => ({
+            name,
+            title,
+            description,
+            arguments: args,
+          })),
+        },
+      });
+
+    case "prompts/get": {
+      const want = String((params as { name?: unknown })?.name ?? "");
+      const prompt = PROMPTS(c).find((p) => p.name === want);
+      if (!prompt) return c.json(rpcError(id, -32602, `No prompt called ${want || "(none given)"}`));
+      const args = ((params as { arguments?: Record<string, string> })?.arguments ?? {}) as Record<string, string>;
+      return c.json({
+        jsonrpc: "2.0",
+        id,
+        result: {
+          description: prompt.description,
+          messages: [
+            {
+              role: "user",
+              content: { type: "text", text: `${prompt.text(args)} ${freeLine()}` },
+            },
+          ],
+        },
+      });
+    }
 
     default:
       return c.json(rpcError(id, -32601, `Unsupported method: ${method}`));
