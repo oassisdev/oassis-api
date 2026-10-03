@@ -102,7 +102,25 @@ const SHAPES = {
  */
 export const billing: MiddlewareHandler<{ Bindings: Env }> = async (c, next) => {
   const route = ROUTES[new URL(c.req.url).pathname];
-  if (!route || c.req.method !== "POST") return next();
+  if (!route) return next();
+
+  /**
+   * A GET on a product route is the self-describing document, and it now answers 402
+   * with that document as its body.
+   *
+   * Coinbase's validator probes with GET, and a 200 made it discard the resource before
+   * reading the challenge — it replied `bazaarExtension: null` while quoting our
+   * documentation back at us. The document is unchanged and still free; what changed is
+   * the status beside it, which is the one thing that validator looks at.
+   *
+   * Only the bare route paths are in ROUTES, so polling a job — `/scrape/batch/:id`,
+   * `/crawl/:id` — is untouched and stays free.
+   */
+  if (c.req.method === "GET") {
+    const gate = x402(c.env);
+    return gate ? await gate(c, async () => undefined) : next();
+  }
+  if (c.req.method !== "POST") return next();
 
   // The body is read once here and kept: reading it again in the handler would
   // hand back an already-consumed stream.

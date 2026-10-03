@@ -19,6 +19,8 @@ import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { HTTPFacilitatorClient, x402ResourceServer } from "@x402/core/server";
 import { paymentMiddleware } from "@x402/hono";
 import type { MiddlewareHandler } from "hono";
+import { BAZAAR } from "./bazaar";
+import { actDoc, batchDoc, crawlDoc, doc, mapDoc, searchDoc, sessionDoc } from "../docs";
 import { priceOfRequest, inDollars } from "./prices";
 import { priceOfSearch } from "../search/exa";
 import { searchRequest } from "../schema";
@@ -141,6 +143,17 @@ export function x402(env: Env): MiddlewareHandler<{ Bindings: Env }> | null {
       }),
     });
 
+    /** The self-describing document each route answers with, now inside its 402. */
+    const DOC_FOR: Record<Route, (c: never) => unknown> = {
+      scrape: doc,
+      session: sessionDoc,
+      act: actDoc,
+      batch: batchDoc,
+      map: mapDoc,
+      crawl: crawlDoc,
+      search: searchDoc,
+    };
+
     const DESCRIPTIONS: Record<Route, string> = {
       scrape: "Web extraction: every output you ask for in `formats`, in one call.",
       session: "Opens a browser session and returns the map of controls.",
@@ -157,7 +170,39 @@ export function x402(env: Env): MiddlewareHandler<{ Bindings: Env }> | null {
     const routes: Parameters<typeof paymentMiddleware>[0] = {};
     for (const route of Object.keys(SEGMENT) as Route[]) {
       for (const path of [`/web/v1/${SEGMENT[route]}`, `/v1/${SEGMENT[route]}`]) {
-        routes[`POST ${path}`] = { ...common(route), description: DESCRIPTIONS[route] };
+        const cfg = {
+          ...common(route),
+          description: DESCRIPTIONS[route],
+          // What makes the endpoint discoverable in Coinbase's registry, and through it
+          // in the rest of the x402 layer. See bazaar.ts for why the examples are
+          // written by hand.
+          extensions: { bazaar: BAZAAR[route] },
+        };
+        routes[`POST ${path}`] = cfg;
+
+        /**
+         * The GET is gated too, and this is the part that actually gets us indexed.
+         *
+         * Coinbase's validator probes a resource with GET. Ours answered 200 with the
+         * self-describing document, so its `returns_402` check discarded the resource
+         * before ever reading the extension — asked on 2026-10-03 it came back
+         * `bazaarExtension: null, index: null`, having read our documentation instead of
+         * our challenge. AgisHub saw 0 of ~14,669 probes get in for the same reason.
+         *
+         * What the open GET was for — that a crawler or a person reads the document
+         * rather than a bare 402 — is kept by serving **the document as the body of the
+         * 402**. Same bytes, same fields, same price: only the status changes, from 200
+         * to 402, which is what the validator needs to see.
+         */
+        routes[`GET ${path}`] = {
+          ...cfg,
+          unpaidResponseBody: () => ({
+            contentType: "application/json",
+            // The documents need nothing from the request but its path, which decides
+            // the prefix: `/web/v1` on the umbrella host, `/v1` on the family one.
+            body: DOC_FOR[route]({ req: { path } } as never) as unknown as Record<string, unknown>,
+          }),
+        };
       }
     }
 
