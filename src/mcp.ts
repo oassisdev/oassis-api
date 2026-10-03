@@ -20,6 +20,7 @@ import {
   openFreeSessions,
   openSessions,
   registerJob,
+  closeSession,
   registerSession,
   sessionAccess,
   sessionOwner,
@@ -769,6 +770,18 @@ async function callTool(
       const sessionId = c.env.SESSIONS.newUniqueId().toString();
       await registerSession(c.env.BILLING, sessionId, payer, payer ? "key" : "free");
       const res = await callSession(c, sessionId, { kind: "open", req: parsed.data });
+
+      /**
+       * A session that never opened is not a service.
+       *
+       * The HTTP route closes the row and refunds; this one did neither, so the same
+       * failure cost money through one door and nothing through the other. The row
+       * matters too: left open it counts towards the caller's limit for ever.
+       */
+      if (!res.ok) {
+        await closeSession(c.env.BILLING, sessionId, () => 0).catch(() => null);
+        await giveBack("refund: session did not open");
+      }
       return finish(await res.text(), !res.ok);
     }
 
