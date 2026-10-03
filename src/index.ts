@@ -407,6 +407,22 @@ app.on("POST", bothPaths("map"), async (c) => {
     return Array.isArray(page.data.links) ? (page.data.links as string[]) : [];
   }, servedText(c));
 
+  /**
+   * A map that found nothing is work that did not happen.
+   *
+   * This marked `success: false` and charged anyway, while scrape in the same situation
+   * refunds and answers 502. Mapping a domain that does not resolve cost $0.0003 and
+   * returned an empty list with a 200 — which is the promise on our own front page
+   * broken by the route next door to the one that keeps it.
+   */
+  if (res.urls.length === 0) {
+    await refund(c, "refund: nothing to map");
+    return c.json(
+      { success: false, urls: [], metadata: { url: parsed.data.url, returned: 0, discovered: 0, ms: Date.now() - started } },
+      502,
+    );
+  }
+
   return c.json({
     success: res.urls.length > 0,
     urls: res.urls,

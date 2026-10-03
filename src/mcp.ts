@@ -798,7 +798,9 @@ async function callTool(
         );
         return Array.isArray(page.data.links) ? (page.data.links as string[]) : [];
       }, servedText(c));
-      return finish(JSON.stringify(res));
+      // Same rule as scrape, and as the HTTP route: nothing found, nothing to pay for.
+      if (res.urls.length === 0) await giveBack("refund: nothing to map");
+      return finish(JSON.stringify(res), res.urls.length === 0);
     }
 
     if (name === "web_crawl") {
