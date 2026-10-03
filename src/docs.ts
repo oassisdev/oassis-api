@@ -171,14 +171,15 @@ export const searchDoc = (c: Context<{ Bindings: Env }>) => ({
     query: "string — what to search for",
     limit: "number — results (default 10, max 50)",
     snippets: "boolean — text alongside each result (default true)",
-    domains: "array of string — only these domains",
-    excludeDomains: "array of string — never these domains",
+    domains: "array of string — only these domains, subdomains included: `example.com` also matches `docs.example.com`",
+    excludeDomains: "array of string — never these domains, subdomains included",
     since: "string — only results published after this ISO date",
   },
   pricing:
     "Exa's price, passed through with no markup, read from its own payment challenge on every call — today $0.007 per search. It can change without us deploying, which is the point.",
   notes: [
     "Results come back as title, url and snippet. To read them, pass the urls to /scrape/batch: searching and reading are separate prices because they are separate work.",
+    "A search that matches nothing is still a search: Exa is paid for it, so it is charged. What is refunded is a search that could not be run at all.",
     "We pay Exa over x402 in USDC on Base, the same way you pay us. No account or API key exists anywhere in this chain.",
   ],
 });
