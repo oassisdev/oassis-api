@@ -64,8 +64,9 @@ describe("MCP protocol", () => {
     expect(result).toEqual({});
   });
 
+  /** The example used to be resources/list, which this server now implements. */
   it("an unknown method is a JSON-RPC error, not a 500", async () => {
-    const { error } = (await (await rpc({ jsonrpc: "2.0", id: 4, method: "resources/list" })).json()) as any;
+    const { error } = (await (await rpc({ jsonrpc: "2.0", id: 4, method: "nothing/here" })).json()) as any;
     expect(error.code).toBe(-32601);
   });
 

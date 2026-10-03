@@ -62,10 +62,11 @@ describe("the call log", () => {
     app.get("/web/v1/scrape", (c) => c.text("ok"));
     const ctx = { waitUntil: (p: Promise<unknown>) => p } as unknown as ExecutionContext;
 
-    await app.fetch(new Request("https://api.oassis.dev/health/dashboard"), env, ctx);
+    const fuera = { "cf-connecting-ip": "1.2.3.4" };
+    await app.fetch(new Request("https://api.oassis.dev/health/dashboard", { headers: fuera }), env, ctx);
     expect(sql.join(" "), "the console logged itself").not.toContain("INSERT INTO traces");
 
-    await app.fetch(new Request("https://api.oassis.dev/web/v1/scrape"), env, ctx);
+    await app.fetch(new Request("https://api.oassis.dev/web/v1/scrape", { headers: fuera }), env, ctx);
     expect(sql.join(" ")).toContain("INSERT INTO traces");
   });
 
@@ -98,11 +99,39 @@ describe("what the log has to catch", () => {
     app.post("/web/v1/map", (c) => c.text("never reached"));
 
     const res = await app.fetch(
-      new Request("https://api.oassis.dev/web/v1/map", { method: "POST", body: "{}" }),
+      new Request("https://api.oassis.dev/web/v1/map", {
+        method: "POST",
+        body: "{}",
+        headers: { "cf-connecting-ip": "1.2.3.4" },
+      }),
       env,
       { waitUntil: (p: Promise<unknown>) => p } as unknown as ExecutionContext,
     );
     expect(res.status).toBe(402);
     expect(sql.join(" "), "a 402 went unlogged").toContain("INSERT INTO traces");
+  });
+});
+
+describe("our own probes", () => {
+  /**
+   * The console checks the product in process through app.fetch. Those requests have no
+   * client address, because there is no client. Logged, they buried the real traffic.
+   */
+  it("does not log a request that came from inside", async () => {
+    const { env, sql } = db();
+    const app = new Hono<{ Bindings: Env }>();
+    mountTraceLog(app);
+    app.get("/web/v1/scrape", (c) => c.text("ok"));
+    const ctx = { waitUntil: (p: Promise<unknown>) => p } as unknown as ExecutionContext;
+
+    await app.fetch(new Request("https://api.oassis.dev/web/v1/scrape"), env, ctx);
+    expect(sql.join(" "), "an in-process probe was logged as traffic").not.toContain("INSERT INTO traces");
+
+    await app.fetch(
+      new Request("https://api.oassis.dev/web/v1/scrape", { headers: { "cf-connecting-ip": "1.2.3.4" } }),
+      env,
+      ctx,
+    );
+    expect(sql.join(" ")).toContain("INSERT INTO traces");
   });
 });

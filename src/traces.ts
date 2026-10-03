@@ -132,6 +132,12 @@ export function traceLog(): MiddlewareHandler<{ Bindings: Env }> {
     const path = new URL(c.req.url).pathname;
     if (SKIP.test(path)) return next();
 
+    // The console probes the product in process, through app.fetch, to know whether it is
+    // alive. Those have no client address because there is no client: they are us. Logged,
+    // they drowned the real traffic — 479 of 503 calls to scrape were the console looking
+    // at itself. Cloudflare sets this header on every request that came from outside.
+    if (!c.req.header("cf-connecting-ip")) return next();
+
     const started = Date.now();
     // Read the request body before the handler consumes it; Hono caches the parse.
     let reqBody: unknown = null;
