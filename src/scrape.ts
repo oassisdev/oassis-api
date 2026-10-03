@@ -38,7 +38,18 @@ function commonOptions(req: ScrapeRequest): Record<string, unknown> {
   if (req.wait?.until) goto.waitUntil = req.wait.until;
   if (req.wait?.timeout) goto.timeout = req.wait.timeout;
   if (Object.keys(goto).length) o.gotoOptions = goto;
-  if (req.wait?.selector) o.waitForSelector = req.wait.selector;
+  /**
+   * `waitForSelector` takes an object, not a string. Sent as a string it answered
+   * "Invalid input: expected object, received string" on every call that used it — so
+   * `wait.selector` was documented, accepted by our schema, and broken in every request
+   * that reached a browser. The timeout rides along when there is one.
+   */
+  if (req.wait?.selector) {
+    o.waitForSelector = {
+      selector: req.wait.selector,
+      ...(req.wait.timeout ? { timeout: req.wait.timeout } : {}),
+    };
+  }
 
   if (req.viewport) o.viewport = req.viewport;
   if (req.request?.headers) o.setExtraHTTPHeaders = req.request.headers;
