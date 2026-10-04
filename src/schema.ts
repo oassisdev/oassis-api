@@ -99,7 +99,33 @@ export const scrapeRequest = z
     block: z
       .object({
         resourceTypes: z.array(z.string().min(1)).optional(),
-        urlPatterns: z.array(z.string().min(1)).optional(),
+        /**
+         * Regular expressions, not globs.
+         *
+         * The obvious guess is a glob, and `*.svg` is not a valid regular expression —
+         * "Nothing to repeat". Sent as one it did not fail: the render hung for sixty
+         * seconds and came back 502, which costs a minute of browser time and tells the
+         * caller nothing about what they got wrong. Checked here, it is refused before
+         * anything opens.
+         */
+        urlPatterns: z
+          .array(
+            z
+              .string()
+              .min(1)
+              .refine(
+                (p) => {
+                  try {
+                    new RegExp(p);
+                    return true;
+                  } catch {
+                    return false;
+                  }
+                },
+                { message: "Not a valid regular expression. These are regexes, not globs: use `\\.svg$`, not `*.svg`." },
+              ),
+          )
+          .optional(),
       })
       .strict()
       .optional(),

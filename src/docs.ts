@@ -29,7 +29,7 @@ export const doc = (c: Context<{ Bindings: Env }>) => ({
     controls: "{ visibleOnly, limit } — options for the `controls` format",
     wait: "{ until, selector, timeout }",
     request: "{ headers, cookies, userAgent, auth }",
-    block: "{ resourceTypes, urlPatterns }",
+    block: "{ resourceTypes, urlPatterns } — urlPatterns are regular expressions, not globs: `\\\\.svg$`, not `*.svg`",
     documents: "a url pointing at a PDF, Word, Excel, CSV or OpenDocument file is converted to markdown without a browser. Only `markdown` comes out of a document",
     maxAge: "number — accept an answer up to this many ms old. A cache hit costs $0.0002 instead of the format price, and the price already says so",
     binaryAs: 'base64 (the only value for now; "url" arrives with storage)',
