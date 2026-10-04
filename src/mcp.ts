@@ -117,6 +117,86 @@ const commonSchema = {
       timeout: { type: "number" },
     },
   },
+
+  /**
+   * The options below were accepted and never declared.
+   *
+   * The server validates every call with the same schema whichever door it came through,
+   * so all of these worked over MCP — but `tools/list` listed seven properties out of
+   * sixteen, and an agent can only use what the catalogue shows it. Nine options existed
+   * and were invisible: a client had no way to ask for a full-page screenshot, an A4 PDF,
+   * only the internal links, or to block images to make a render cheaper.
+   *
+   * Found by running the HTTP parameter matrix a second time through MCP.
+   */
+  screenshot: {
+    type: "object",
+    description: "Options for the `screenshot` format.",
+    properties: {
+      fullPage: { type: "boolean", description: "The whole page, not just the viewport." },
+      type: { type: "string", enum: ["png", "jpeg", "webp"] },
+      quality: { type: "number", description: "1 to 100. Not valid with `png`." },
+      omitBackground: { type: "boolean" },
+      selector: { type: "string", description: "Capture one element instead of the page." },
+      viewport: { type: "object", properties: { width: { type: "number" }, height: { type: "number" } } },
+    },
+  },
+  pdf: {
+    type: "object",
+    description: "Options for the `pdf` format.",
+    properties: {
+      format: {
+        type: "string",
+        enum: ["letter", "legal", "tabloid", "ledger", "a0", "a1", "a2", "a3", "a4", "a5", "a6"],
+      },
+      landscape: { type: "boolean" },
+      printBackground: { type: "boolean" },
+      scale: { type: "number", description: "0.1 to 2." },
+    },
+  },
+  links: {
+    type: "object",
+    description: "Options for the `links` format.",
+    properties: { visibleOnly: { type: "boolean" }, excludeExternal: { type: "boolean" } },
+  },
+  controls: {
+    type: "object",
+    description: "Options for the `controls` format.",
+    properties: { visibleOnly: { type: "boolean" }, limit: { type: "number", description: "1 to 1000." } },
+  },
+  request: {
+    type: "object",
+    description: "How to make the request: headers, cookies, user agent, basic auth.",
+    properties: {
+      headers: { type: "object" },
+      cookies: { type: "array", items: { type: "object" } },
+      userAgent: { type: "string" },
+      auth: { type: "object", properties: { username: { type: "string" }, password: { type: "string" } } },
+    },
+  },
+  block: {
+    type: "object",
+    description:
+      "What not to load, which makes a render faster and cheaper. `urlPatterns` are regular expressions, not globs: `\\.svg$`, not `*.svg`.",
+    properties: {
+      resourceTypes: { type: "array", items: { type: "string" }, description: "image, font, stylesheet, media…" },
+      urlPatterns: { type: "array", items: { type: "string" } },
+    },
+  },
+  binaryAs: {
+    type: "string",
+    enum: ["base64"],
+    description: "How a screenshot or a PDF comes back. `base64` is the only value today.",
+  },
+  viewport: {
+    type: "object",
+    description: "The window to render in.",
+    properties: {
+      width: { type: "number" },
+      height: { type: "number" },
+      deviceScaleFactor: { type: "number" },
+    },
+  },
 } as const;
 
 const TOOLS = [
