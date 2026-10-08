@@ -102,11 +102,22 @@ export function inDollars(micros: number): string {
 }
 
 /**
+ * The least a call can cost.
+ *
+ * The facilitator that settles the wallet gate refuses an amount below this, and it
+ * refuses it *after* the caller has signed, with a bare 402 and no reason given — so a
+ * route priced under it is not cheap, it is unbuyable, and the caller cannot tell why.
+ * Any price the gate can quote has to clear this, which is why it is a floor on the
+ * prices themselves and not a surcharge added at the gate: both doors charge the same.
+ */
+export const MIN_CHARGE = 1_000;
+
+/**
  * Price of a map. A sitemap is plain HTTP with no browser involved, so this is one
- * render when the page is included, and almost nothing when it is not.
+ * render when the page is included, and the floor when it is not.
  */
 export function mapPrice(includePage: boolean): number {
-  return includePage ? 1_500 : 300;
+  return includePage ? 1_500 : MIN_CHARGE;
 }
 
 /**

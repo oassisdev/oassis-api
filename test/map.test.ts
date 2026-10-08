@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { keepUrl } from "../src/map";
 import { crawlRequest, mapRequest } from "../src/schema";
-import { crawlPagePrice, crawlPrice, mapPrice, priceOfRequest } from "../src/billing/prices";
+import { MIN_CHARGE, crawlPagePrice, crawlPrice, mapPrice, priceOfRequest } from "../src/billing/prices";
 
 const base = (extra: Record<string, unknown> = {}) =>
   mapRequest.parse({ url: "https://a.com/start", ...extra });
@@ -45,10 +45,10 @@ describe("which urls belong to the map", () => {
 });
 
 describe("map price", () => {
-  it("almost nothing without the page, one render with it", () => {
-    expect(mapPrice(false)).toBe(300);
+  it("the payable floor without the page, one render with it", () => {
+    expect(mapPrice(false)).toBe(MIN_CHARGE);
     expect(mapPrice(true)).toBe(1_500);
-    expect(priceOfRequest("map", { includePage: false } as never)).toBe(300);
+    expect(priceOfRequest("map", { includePage: false } as never)).toBe(MIN_CHARGE);
     expect(priceOfRequest("map", {} as never)).toBe(1_500);
   });
 });

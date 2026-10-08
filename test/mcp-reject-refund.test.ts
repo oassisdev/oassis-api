@@ -12,8 +12,20 @@ import { mcp } from "../src/mcp";
  */
 describe("arguments that do not parse", () => {
   it("still answers with the reason, not a bare failure", async () => {
+    // Una cuenta con saldo: sin clave reconocida la llamada ni llega a validarse, y
+    // la prueba mediría la puerta de la clave en vez del rechazo del esquema.
     const env = {
-      BILLING: { prepare: () => ({ bind: () => ({ first: async () => null, run: async () => ({ meta: { changes: 0 } }) }) }) },
+      BILLING: {
+        prepare: (sql: string) => ({
+          bind: () => ({
+            first: async () =>
+              sql.includes("FROM api_keys") || sql.includes("a.balance_micros")
+                ? { id: "cuenta-de-prueba", balance: 1_000_000, sessions: 4 }
+                : { balance: 1_000_000 },
+            run: async () => ({ meta: { changes: 1 } }),
+          }),
+        }),
+      },
     } as unknown as Parameters<typeof mcp.request>[2];
     const r = await mcp.request(
       "/mcp",
@@ -23,7 +35,7 @@ describe("arguments that do not parse", () => {
           jsonrpc: "2.0", id: 1, method: "tools/call",
           params: { name: "web_scrape_batch", arguments: { urls: ["https://oassis.dev"] } },
         }),
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", authorization: "Bearer oas_prueba" },
       },
       env,
     );

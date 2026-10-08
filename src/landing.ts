@@ -18,7 +18,6 @@ import type { Context } from "hono";
 import { ICON_LINKS } from "./icon";
 import { PER_FORMAT, PRICES, inDollars, mapPrice } from "./billing/prices";
 import { origin, prefixForHost } from "./http";
-import { FREE_EVER, FREE_PER_DAY } from "./free-tier";
 import type { Env } from "./types";
 
 /** What the page claims to be, in the words somebody would search for. */
@@ -232,9 +231,7 @@ repeat the request, or send an API key and it is charged to a prepaid balance.</
 <h3>Two doors, one API</h3>
 <ul>
   <li><strong>MCP</strong> — point Claude, Cursor or any MCP client at <code>${api}/mcp</code>
-  and the tools appear. <code>initialize</code> and <code>tools/list</code> are free, and a
-  keyless client gets ${FREE_PER_DAY.scrape} page reads a day, ${FREE_PER_DAY.map} site
-  listings a day, and — once — one browser session and ${FREE_EVER.searches} searches.</li>
+  and the tools appear. Every tool works without a key, except search, which Exa charges for.</li>
   <li><strong>HTTP x402</strong> — <code>POST ${prefix}/&lt;route&gt;</code>. An unpaid request
   gets a <code>402</code> challenge, the client signs a USDC payment (EIP-3009 on Base) and
   retries. <code>GET</code> the same route without parameters and it describes itself instead

@@ -30,10 +30,4 @@ describe("actions that never ran", () => {
     expect(src).toContain("action(s) never ran");
     expect(src).toContain("actions.length - corridas");
   });
-
-  /** A free call has no money to return in parts: its allowance is spent per call. */
-  it("does not try to refund part of a free allowance", () => {
-    const src = readFileSync("src/mcp.ts", "utf8");
-    expect(src).toContain("A free call has no money to return in parts");
-  });
 });

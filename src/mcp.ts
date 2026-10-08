@@ -27,6 +27,7 @@ import {
 } from "./billing/accounts";
 import { PRICES, inDollars, priceOfRequest } from "./billing/prices";
 import {
+  LIGHT_FORMATS,
   actRequest,
   batchRequest,
   crawlRequest,
@@ -35,33 +36,23 @@ import {
   searchRequest,
   sessionRequest,
 } from "./schema";
+import { PROSE, fichaDe } from "./mcp-schema";
 import { ENGINE, priceOfSearch, search, searchAvailable } from "./search/exa";
 import { read, scrape } from "./scrape";
 import { QuickActionsRenderer } from "./quick-actions";
 import { CachedRenderer } from "./cached-renderer";
 import { cacheable } from "./cache";
-import {
-  claimFreeCall,
-  releaseFreeCall,
-  explainRefusal,
-  freeTable,
-  FREE_EVER,
-  FREE_MAX_AGE_MS,
-  FREE_PER_DAY,
-} from "./free-tier";
-import type { FreeCall, FreeLeft } from "./free-tier";
+import { checkFreeCall, explainRefusal, FREE_MAX_AGE_MS } from "./free-tier";
 import { origin } from "./http";
 import { servedText } from "./landing";
 import { PROMPTS, RESOURCES, freeLine, readResource } from "./mcp-resources";
 import { VERSION } from "./version";
 import { feedbackRequest } from "./feedback";
 import { mapSite } from "./map";
-import { FORMATS, type Env } from "./types";
+import type { Env } from "./types";
 import type { Message } from "./session/do";
 
 /** What a keyless caller has left, in the words the answer carries. */
-const noteFor = (left: FreeLeft): string =>
-  `\n\n(Free tier left: ${left.scrape} reads and ${left.map} site listings today, ${left.sessions} session and ${left.searches} searches ever. A key or a wallet payment removes the limits.)`;
 
 /** Version of the protocol we speak. */
 const PROTOCOL = "2025-06-18";
@@ -89,115 +80,24 @@ interface RpcRequest {
   params?: Record<string, unknown>;
 }
 
-const commonSchema = {
-  url: { type: "string", description: "Page to process." },
-  maxAge: {
-    type: "number",
-    description:
-      "Accept an answer up to this many milliseconds old. A cache hit costs $0.0002 instead of the format price. Leave it out to force a fresh render.",
-  },
-  formats: {
-    type: "array",
-    items: { type: "string", enum: [...FORMATS] },
-    description:
-      "Outputs you want in the same response. `controls` is the map of what can be clicked; `elements` needs `selectors`; `json` needs `json.prompt`.",
-  },
-  selectors: { type: "array", items: { type: "string" }, description: "CSS selectors for `elements`." },
-  json: {
-    type: "object",
-    description: "For the `json` format: `prompt` and/or `schema`.",
-    properties: { prompt: { type: "string" }, schema: { type: "object" } },
-  },
-  wait: {
-    type: "object",
-    description: "When to consider the page loaded: `until`, `selector`, `timeout`.",
-    properties: {
-      until: { type: "string", enum: ["load", "domcontentloaded", "networkidle0", "networkidle2"] },
-      selector: { type: "string" },
-      timeout: { type: "number" },
-    },
-  },
+/**
+ * The shape of every tool, derived from the schema that validates it.
+ *
+ * `web_act` is the one that needs saying: it validates with `passthrough()` and hands the
+ * rest of the body to the session schema, so its own shape is only `sessionId` and
+ * `actions`. Generating from it alone would publish two properties and hide fifteen.
+ *
+ * `html` is left out of both session tools because both reject it by name: a session
+ * navigates, so there is nothing to apply raw html to.
+ */
+const DE_SESION = fichaDe(sessionRequest, { omit: ["html"] }).properties;
 
-  /**
-   * The options below were accepted and never declared.
-   *
-   * The server validates every call with the same schema whichever door it came through,
-   * so all of these worked over MCP — but `tools/list` listed seven properties out of
-   * sixteen, and an agent can only use what the catalogue shows it. Nine options existed
-   * and were invisible: a client had no way to ask for a full-page screenshot, an A4 PDF,
-   * only the internal links, or to block images to make a render cheaper.
-   *
-   * Found by running the HTTP parameter matrix a second time through MCP.
-   */
-  screenshot: {
-    type: "object",
-    description: "Options for the `screenshot` format.",
-    properties: {
-      fullPage: { type: "boolean", description: "The whole page, not just the viewport." },
-      type: { type: "string", enum: ["png", "jpeg", "webp"] },
-      quality: { type: "number", description: "1 to 100. Not valid with `png`." },
-      omitBackground: { type: "boolean" },
-      selector: { type: "string", description: "Capture one element instead of the page." },
-      viewport: { type: "object", properties: { width: { type: "number" }, height: { type: "number" } } },
-    },
-  },
-  pdf: {
-    type: "object",
-    description: "Options for the `pdf` format.",
-    properties: {
-      format: {
-        type: "string",
-        enum: ["letter", "legal", "tabloid", "ledger", "a0", "a1", "a2", "a3", "a4", "a5", "a6"],
-      },
-      landscape: { type: "boolean" },
-      printBackground: { type: "boolean" },
-      scale: { type: "number", description: "0.1 to 2." },
-    },
-  },
-  links: {
-    type: "object",
-    description: "Options for the `links` format.",
-    properties: { visibleOnly: { type: "boolean" }, excludeExternal: { type: "boolean" } },
-  },
-  controls: {
-    type: "object",
-    description: "Options for the `controls` format.",
-    properties: { visibleOnly: { type: "boolean" }, limit: { type: "number", description: "1 to 1000." } },
-  },
-  request: {
-    type: "object",
-    description: "How to make the request: headers, cookies, user agent, basic auth.",
-    properties: {
-      headers: { type: "object" },
-      cookies: { type: "array", items: { type: "object" } },
-      userAgent: { type: "string" },
-      auth: { type: "object", properties: { username: { type: "string" }, password: { type: "string" } } },
-    },
-  },
-  block: {
-    type: "object",
-    description:
-      "What not to load, which makes a render faster and cheaper. `urlPatterns` are regular expressions, not globs: `\\.svg$`, not `*.svg`.",
-    properties: {
-      resourceTypes: { type: "array", items: { type: "string" }, description: "image, font, stylesheet, media…" },
-      urlPatterns: { type: "array", items: { type: "string" } },
-    },
-  },
-  binaryAs: {
-    type: "string",
-    enum: ["base64"],
-    description: "How a screenshot or a PDF comes back. `base64` is the only value today.",
-  },
-  viewport: {
-    type: "object",
-    description: "The window to render in.",
-    properties: {
-      width: { type: "number" },
-      height: { type: "number" },
-      deviceScaleFactor: { type: "number" },
-    },
-  },
-} as const;
+/** Published for a batch and a crawl: both refuse the heavy formats, so neither offers them. */
+const FORMATOS_LIGEROS = {
+  type: "array",
+  items: { type: "string", enum: [...LIGHT_FORMATS] },
+  description: `${PROSE.formats} A screenshot or a PDF is not available here: every result is kept until you collect it. Ask for those one url at a time on web_scrape.`,
+};
 
 const TOOLS = [
   {
@@ -211,11 +111,7 @@ const TOOLS = [
     },
     description:
       "Processes a page and returns every output you ask for at once: markdown, html, links, screenshot, PDF, accessibility tree, elements by selector, AI-structured data, and `controls` (what can be clicked). One call, and a partial failure does not void the rest. From $0.001 per output. A url pointing at a PDF, Word, Excel or CSV file is converted to markdown instead, with no browser, for $0.002. Reference for the oassis API: https://oassis.dev/openapi.json",
-    inputSchema: {
-      type: "object",
-      properties: { ...commonSchema, html: { type: "string", description: "Raw HTML instead of `url`." } },
-      required: [],
-    },
+    inputSchema: fichaDe(scrapeRequest),
   },
   {
     name: "web_session_open",
@@ -228,7 +124,7 @@ const TOOLS = [
     },
     description:
       "Opens a browser on a page and leaves it open, returning the map of controls. Use it when something has to be FILLED IN or CLICKED, not just read: inside the session the `controls` references keep working and you can act on the same state. $0.005 plus the outputs. Close it with web_session_close when you are done. Reference for the oassis API: https://oassis.dev/openapi.json",
-    inputSchema: { type: "object", properties: commonSchema, required: ["url"] },
+    inputSchema: fichaDe(sessionRequest, { omit: ["html"], required: ["url"] }),
   },
   {
     name: "web_act",
@@ -241,15 +137,7 @@ const TOOLS = [
     },
     description:
       "Runs actions against an open session and returns the resulting state. Actions: {navigate}, {click:{ref}}, {type:{ref,text,clear}}, {select:{ref,value}}, {press}, {scroll}, {wait}, {back}. The `ref` is the one `controls` gave you. It stops at the first failure and tells you where. $0.0005 per action. Reference for the oassis API: https://oassis.dev/openapi.json",
-    inputSchema: {
-      type: "object",
-      properties: {
-        sessionId: { type: "string", description: "The one web_session_open returned." },
-        actions: { type: "array", items: { type: "object" }, description: "Actions, in order." },
-        ...commonSchema,
-      },
-      required: ["sessionId", "actions"],
-    },
+    inputSchema: fichaDe(actRequest, { extra: DE_SESION, omit: ["html"] }),
   },
   {
     name: "web_scrape_batch",
@@ -262,22 +150,7 @@ const TOOLS = [
     },
     description:
       "A batch OF SCRAPES: reads a list of urls YOU give it (2 to 50, from any sites) and returns a jobId. It discovers nothing on its own — for that use web_crawl. Charged up front per url; urls that fail and urls served from the cache are refunded. Poll it with web_batch_status.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        urls: {
-          type: "array",
-          items: { type: "string" },
-          description: "The urls to read, 2 to 50. They do not have to share a site.",
-        },
-        formats: commonSchema.formats,
-        selectors: commonSchema.selectors,
-        json: commonSchema.json,
-        wait: commonSchema.wait,
-        maxAge: commonSchema.maxAge,
-      },
-      required: ["urls"],
-    },
+    inputSchema: fichaDe(batchRequest, { narrow: { formats: FORMATOS_LIGEROS } }),
   },
   {
     name: "web_batch_status",
@@ -293,7 +166,7 @@ const TOOLS = [
     inputSchema: {
       type: "object",
       properties: {
-        jobId: { type: "string" },
+        jobId: { type: "string", description: "The batch, from web_scrape_batch." },
         limit: { type: "number", description: "Results to return (default 50)." },
         cancel: { type: "boolean", description: "Stop the batch and refund what it did not read." },
       },
@@ -310,20 +183,8 @@ const TOOLS = [
       openWorldHint: true,
     },
     description:
-      "Every url of a site, fast and cheap: its sitemap plus, optionally, the links on the page. Use it BEFORE crawling, to see what is there and decide what is worth reading. $0.0003 with `includePage: false` (no browser at all), $0.0015 with the page. Reference for the oassis API: https://oassis.dev/openapi.json",
-    inputSchema: {
-      type: "object",
-      properties: {
-        url: { type: "string", description: "The site to map." },
-        limit: { type: "number", description: "Urls to return (default 1000, max 5000)." },
-        includePage: { type: "boolean", description: "Render the page too (default true)." },
-        search: { type: "string", description: "Keep only urls containing this text." },
-        includeSubdomains: { type: "boolean" },
-        includePaths: { type: "array", items: { type: "string" } },
-        excludePaths: { type: "array", items: { type: "string" } },
-      },
-      required: ["url"],
-    },
+      "Every url of a site, fast and cheap: its sitemap plus, optionally, the links on the page. Use it BEFORE crawling, to see what is there and decide what is worth reading. $0.001 with `includePage: false` (no browser at all), $0.0015 with the page. Reference for the oassis API: https://oassis.dev/openapi.json",
+    inputSchema: fichaDe(mapRequest),
   },
   {
     name: "web_crawl",
@@ -336,20 +197,7 @@ const TOOLS = [
     },
     description:
       "Follows a site's links and reads every page. Returns a jobId; poll it with web_crawl_status. Charged up front for the pages it is allowed to read (`limit`), and the pages it never reads are refunded. Use web_map first if you only need the urls. Reference for the oassis API: https://oassis.dev/openapi.json",
-    inputSchema: {
-      type: "object",
-      properties: {
-        url: { type: "string", description: "Where to start." },
-        limit: { type: "number", description: "Pages it may read (default 25, max 200)." },
-        maxDepth: { type: "number", description: "How far to follow links (default 2, max 5)." },
-        formats: commonSchema.formats,
-        includeSubdomains: { type: "boolean" },
-        includePaths: { type: "array", items: { type: "string" } },
-        excludePaths: { type: "array", items: { type: "string" } },
-        maxAge: commonSchema.maxAge,
-      },
-      required: ["url"],
-    },
+    inputSchema: fichaDe(crawlRequest, { narrow: { formats: FORMATOS_LIGEROS } }),
   },
   {
     name: "web_crawl_status",
@@ -365,7 +213,7 @@ const TOOLS = [
     inputSchema: {
       type: "object",
       properties: {
-        jobId: { type: "string" },
+        jobId: { type: "string", description: "The crawl, from web_crawl." },
         limit: { type: "number", description: "Pages to return (default 50)." },
         cancel: { type: "boolean", description: "Stop the crawl and refund what it did not read." },
       },
@@ -383,18 +231,7 @@ const TOOLS = [
     },
     description:
       "Search the web with Exa's index: a query instead of a url, for when you do not know where to look. Returns title, url and a snippet per result. To read the pages, pass the urls to web_scrape_batch. The engine is named because the price is Exa's, passed through with no markup and read from its own payment challenge on every call — today $0.007 per search.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        query: { type: "string", description: "What to search for." },
-        limit: { type: "number", description: "Results (default 10, max 50)." },
-        snippets: { type: "boolean", description: "Text alongside each result (default true)." },
-        domains: { type: "array", items: { type: "string" }, description: "Only these domains, subdomains included: `example.com` also matches `docs.example.com`." },
-        excludeDomains: { type: "array", items: { type: "string" }, description: "Never these domains, subdomains included." },
-        since: { type: "string", description: "Only results published after this ISO date." },
-      },
-      required: ["query"],
-    },
+    inputSchema: fichaDe(searchRequest),
   },
   {
     name: "web_feedback",
@@ -407,17 +244,7 @@ const TOOLS = [
     },
     description:
       "Tell us an answer was good or bad. FREE. Use it when a result is wrong — empty markdown, a control map missing a button, data that does not match the page — with the url or the jobId so it can be reproduced. It is the only way we learn that we read a page badly: our logs cannot tell that apart from a page that is simply like that. Reference for the oassis API: https://oassis.dev/openapi.json",
-    inputSchema: {
-      type: "object",
-      properties: {
-        verdict: { type: "string", enum: ["good", "bad"] },
-        route: { type: "string", description: "Which tool or endpoint it is about." },
-        reference: { type: "string", description: "The jobId or sessionId it happened on." },
-        url: { type: "string", description: "The page that came out wrong." },
-        comment: { type: "string", description: "What you expected and what you got." },
-      },
-      required: ["verdict"],
-    },
+    inputSchema: fichaDe(feedbackRequest),
   },
   {
     name: "web_session_close",
@@ -432,7 +259,7 @@ const TOOLS = [
       "Closes a session and stops billing browser time. Free. If you do not close it, it closes itself after a minute without use.",
     inputSchema: {
       type: "object",
-      properties: { sessionId: { type: "string" } },
+      properties: { sessionId: { type: "string", description: "The session to close, from web_session_open." } },
       required: ["sessionId"],
     },
   },
@@ -486,7 +313,7 @@ mcp.post("/mcp", async (c) => {
           },
           instructions: [
             "Web extraction and browser control for agents.",
-            `You can try it with no key and no account: ${FREE_PER_DAY.scrape} page or document reads a day, ${FREE_PER_DAY.map} site listings a day, and — once, ever — one browser session with ${FREE_EVER.actions} actions and ${FREE_EVER.searches} searches. Crawls, batches and AI extraction need a key. Call GET /mcp for the table.`,
+            "You can use every tool with no key and no account, except web_search_exa, which is paid.",
             "After that, send an API key in `Authorization: Bearer oas_…`, or pay per call with a wallet over the HTTP API (x402, USDC on Base) with no account at all.",
             "To read a page use web_scrape; to fill in or click something, open a session with web_session_open and act with web_act; to find urls use web_map before paying to read them.",
           ].join(" "),
@@ -569,18 +396,14 @@ mcp.get("/mcp", (c) =>
       protocolVersion: PROTOCOL,
       auth: "Authorization: Bearer oas_…",
       /**
-       * The allowance in calls, which is the unit a caller plans in. It is one shared
-       * allowance, so these are maximums: spending it on pages leaves none for a crawl.
-       */
-      /**
        * A demo, not a plan: enough to see whether this is any good, shaped by the first
        * thirty seconds rather than by what is cheap. Anyone who wants more can pay per call
        * with a wallet and no account.
        */
       free: {
         forWho: "MCP clients, with no key and no account",
-        shape: "A demo. Each limit is its own, not a shared pool.",
-        allowance: freeTable(),
+        allowance: "every tool, except web_search_exa, which is paid",
+        limits: "none per call or per day; 3 browser sessions open at once across keyless callers",
       },
       tools: TOOLS.map((t) => t.name),
     },
@@ -712,17 +535,11 @@ async function callTool(
   const sessionOf = typeof args.sessionId === "string" ? args.sessionId : "";
 
   /**
-   * Two ways to pay for a tool call here. A key is charged to its balance; without one, the
-   * call is taken out of the day's free budget — MCP has no 402 challenge a wallet could
-   * answer, so this is the only door a stranger has, and the one most people arrive by.
-   *
-   * From here on, `payer` is either an account id or null, meaning the free tier paid.
+   * A key is charged to its balance. Without one the call is free over MCP, except search,
+   * and `payer` stays null.
    */
   const key = (c.req.header("authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
   let payer: string | null = null;
-  let note = "";
-  /** What the free tier was charged, kept so a failure can put it back. */
-  let freeCall: { caller: { ip: string }; call: FreeCall } | null = null;
 
   if (key) {
     const account = await accountForKey(c.env.BILLING, key);
@@ -764,63 +581,31 @@ async function callTool(
     }
     payer = account.id;
   } else {
-    const caller = {
-      ip: c.req.header("cf-connecting-ip") ?? c.req.header("x-forwarded-for") ?? "unknown",
-      userAgent: c.req.header("user-agent"),
-    };
-    const call: FreeCall = {
-      tool: name,
-      micros,
-      url: typeof args.url === "string" ? args.url : undefined,
-      formats: args.formats,
-      sessionsOpen: route === "session" ? await openFreeSessions(c.env.BILLING) : 0,
-    };
-    const claim = await claimFreeCall(c.env, caller, call);
-    if (claim.ok) freeCall = { caller, call };
-
-    if (!claim.ok) {
-      // No counter at all means this deployment has no free tier: say so in terms of paying.
-      if (claim.reason === "no_counter") {
-        return c.json(
-          toolResult(
-            id,
-            `This call costs ${inDollars(micros)} and needs an API key. Send it in the \`Authorization: Bearer oas_…\` header of your MCP client, or pay per call with a wallet over the HTTP API (x402).`,
-            true,
-          ),
-        );
-      }
-      return c.json(toolResult(id, explainRefusal(claim.reason, inDollars(micros)), true));
+    if (route === "search") {
+      return c.json(toolResult(id, explainRefusal("paid_search", inDollars(micros)), true));
     }
+    const refusal = await checkFreeCall(
+      { userAgent: c.req.header("user-agent") },
+      {
+        tool: name,
+        url: typeof args.url === "string" ? args.url : undefined,
+        urls: Array.isArray(args.urls) ? args.urls.filter((u): u is string => typeof u === "string") : undefined,
+        sessionsOpen: route === "session" ? await openFreeSessions(c.env.BILLING) : 0,
+      },
+    );
+    if (refusal) return c.json(toolResult(id, explainRefusal(refusal, inDollars(micros)), true));
 
     if (route === "act") {
       const denied = await notYours(c, sessionOf, null);
       if (denied) return c.json(toolResult(id, denied, true));
     }
-
-    // What is left, per operation, because that is what a caller plans with.
-    note = noteFor(claim.left);
   }
 
-  /** Every answer from here carries the free-tier note, when there is one. */
-  const finish = (text: string, isError = false) => c.json(toolResult(id, text + note, isError));
+  const finish = (text: string, isError = false) => c.json(toolResult(id, text, isError));
 
-  /**
-   * Undoes the payment when the work did not happen: a key gets its balance back, and the
-   * free tier gets its call back. Never throws: a failed give-back must not turn an error
-   * the caller can read into a 500 they cannot.
-   */
-  /** Gives back the whole charge, or `parte` of it when only some of the work was skipped. */
+  /** Gives back the whole charge, or `parte` of it, when the work did not happen. Keyless calls have nothing to give back. */
   const giveBack = async (reason: string, parte?: number) => {
-    if (payer) {
-      await credit(c.env.BILLING, payer, parte ?? micros, reason).catch(() => null);
-    } else if (parte !== undefined) {
-      // A free call has no money to return in parts: the allowance is spent per call.
-      return;
-    } else if (freeCall) {
-      // The note was written when the call was charged, so it has to be written again.
-      const left = await releaseFreeCall(c.env, freeCall.caller, freeCall.call).catch(() => null);
-      if (left) note = noteFor(left);
-    }
+    if (payer) await credit(c.env.BILLING, payer, parte ?? micros, reason).catch(() => null);
   };
 
   /**
@@ -926,8 +711,12 @@ async function callTool(
         return Array.isArray(page.data.links) ? (page.data.links as string[]) : [];
       }, servedText(c));
       // Same rule as scrape, and as the HTTP route: nothing found, nothing to pay for.
-      if (res.urls.length === 0) await giveBack("refund: nothing to map");
-      return finish(JSON.stringify(res), res.urls.length === 0);
+      // Igual que en la puerta http: el sitio que no dio nada se devuelve, pero una
+      // lista vacía porque los filtros del que llama la vaciaron es una respuesta
+      // completa, y `offered` dice de quién fue el filtro.
+      const enVacio = res.urls.length === 0 && res.offered === 0;
+      if (enVacio) await giveBack("refund: nothing to map");
+      return finish(JSON.stringify(res), enVacio);
     }
 
     if (name === "web_crawl") {

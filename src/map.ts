@@ -24,6 +24,19 @@ export interface MapResult {
   urls: string[];
   /** Unique urls found before the limit was applied. */
   discovered: number;
+  /**
+   * Urls the site put on the table before the caller's own filters ran.
+   *
+   * It separates the two empty answers, which are not the same thing: a site that gave
+   * nothing (unreachable, or no sitemap and the page not asked for) is a failure and is
+   * refunded, while a site that gave plenty and saw `search` or `includePaths` discard
+   * all of it is a complete answer that happens to be empty.
+   *
+   * It counts what was *looked at*, not what the site holds: the collector stops as soon
+   * as the limit is met, so `limit: 3` on a sitemap of thousands reports three. Zero is
+   * the only value to read as a statement about the site.
+   */
+  offered: number;
   /** Where the discovered ones came from: it explains the count and the price. */
   sources: { sitemap: number; page: number };
   sitemaps: string[];
@@ -81,8 +94,9 @@ async function urlsFromSitemaps(
   keep: (url: string) => string | null,
   want: number,
   served?: LocalText,
-): Promise<{ urls: string[]; seen: string[] }> {
+): Promise<{ urls: string[]; seen: string[]; offered: number }> {
   const seen: string[] = [];
+  const offered = new Set<string>();
   const kept = new Set<string>();
   const queue = [...(await findSitemaps(origin, served))];
 
@@ -100,12 +114,13 @@ async function urlsFromSitemaps(
       continue;
     }
     for (const loc of locs) {
+      offered.add(loc);
       const wanted = keep(loc);
       if (wanted) kept.add(wanted);
       if (kept.size >= want) break;
     }
   }
-  return { urls: [...kept], seen };
+  return { urls: [...kept], seen, offered: offered.size };
 }
 
 /** Keeps what belongs to the site and what the caller asked for. */
@@ -146,10 +161,12 @@ export async function mapSite(
   const origin = new URL(req.url).origin;
   const found = new Set<string>();
   const sources = { sitemap: 0, page: 0 };
+  let offered = 0;
 
   // The page can add urls the sitemap does not list, so the sitemap is asked for a
   // little more than the limit when the page is coming too.
   const sitemap = await urlsFromSitemaps(origin, (u) => keepUrl(u, req), req.limit, served);
+  offered += sitemap.offered;
   for (const candidate of sitemap.urls) {
     if (!found.has(candidate)) {
       found.add(candidate);
@@ -160,6 +177,7 @@ export async function mapSite(
   if (req.includePage !== false) {
     try {
       for (const candidate of await linksFromPage()) {
+        offered += 1;
         const kept = keepUrl(candidate, req);
         if (kept && !found.has(kept)) {
           found.add(kept);
@@ -174,6 +192,7 @@ export async function mapSite(
   return {
     urls: [...found].slice(0, req.limit),
     discovered: found.size,
+    offered,
     sources,
     sitemaps: sitemap.seen,
   };

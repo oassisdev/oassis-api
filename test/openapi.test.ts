@@ -54,7 +54,7 @@ describe("the catalogue", () => {
       "/web/v1/map",
       "/web/v1/scrape",
       "/web/v1/scrape/batch",
-      "/web/v1/search/exa",
+      "/web/v1/search",
       "/web/v1/session",
     ]);
     expect(spec.servers[0]?.url).toBe("https://api.oassis.dev");
@@ -123,13 +123,13 @@ describe("llms.txt", () => {
    */
   it("publishes every route the guard charges for", () => {
     const spec = openapi(ctx()) as { paths: Record<string, unknown> };
-    for (const path of ["scrape", "session", "act", "scrape/batch", "map", "crawl", "search/exa"]) {
+    for (const path of ["scrape", "session", "act", "scrape/batch", "map", "crawl", "search"]) {
       expect(Object.keys(spec.paths), path).toContain(`/web/v1/${path}`);
     }
   });
 
   it("lists every endpoint with its price and its tool", () => {
-    for (const path of ["/web/v1/scrape", "/web/v1/map", "/web/v1/crawl", "/web/v1/search/exa"]) {
+    for (const path of ["/web/v1/scrape", "/web/v1/map", "/web/v1/crawl", "/web/v1/search"]) {
       expect(text).toContain(`### POST ${path}`);
     }
     expect(text).toContain("web_search_exa");

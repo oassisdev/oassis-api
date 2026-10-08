@@ -75,14 +75,14 @@ const ROUTES: Record<string, "scrape" | "session" | "act" | "batch" | "map" | "c
   "/web/v1/scrape/batch": "batch",
   "/web/v1/map": "map",
   "/web/v1/crawl": "crawl",
-  "/web/v1/search/exa": "search",
+  "/web/v1/search": "search",
   "/v1/scrape": "scrape",
   "/v1/session": "session",
   "/v1/act": "act",
   "/v1/scrape/batch": "batch",
   "/v1/map": "map",
   "/v1/crawl": "crawl",
-  "/v1/search/exa": "search",
+  "/v1/search": "search",
 };
 
 /** The schema of each route, so an invalid request is refused before it is charged. */

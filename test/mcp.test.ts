@@ -89,30 +89,17 @@ describe("MCP protocol", () => {
 });
 
 describe("billing over MCP", () => {
-  it("with no key, it states the price and how to send one", async () => {
+  it("with no key, search is refused and never runs for free", async () => {
     const { result } = (await (
       await rpc({
         jsonrpc: "2.0",
         id: 5,
         method: "tools/call",
-        params: { name: "web_scrape", arguments: { url: "https://a.com", formats: ["markdown"] } },
+        params: { name: "web_search_exa", arguments: { query: "oassis", limit: 3 } },
       })
     ).json()) as any;
     expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain("$0.001");
-    expect(result.content[0].text).toMatch(/Authorization: Bearer/);
-  });
-
-  it("the announced price depends on what is requested", async () => {
-    const { result } = (await (
-      await rpc({
-        jsonrpc: "2.0",
-        id: 6,
-        method: "tools/call",
-        params: { name: "web_scrape", arguments: { url: "https://a.com", formats: ["markdown", "pdf"] } },
-      })
-    ).json()) as any;
-    expect(result.content[0].text).toContain("$0.003");
+    expect(result.content[0].text).toMatch(/Search is not configured|is paid/);
   });
 
   it("a key the database does not recognise is rejected", async () => {

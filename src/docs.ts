@@ -107,6 +107,7 @@ export const batchDoc = (c: Context<{ Bindings: Env }>) => ({
   },
   notes: [
     "Charged up front, one scrape per url. A url that fails outright and a url served from the cache are refunded together when the job ends, as a single movement in your account.",
+    "A refund is a credit to an API-key account. A wallet payment is settled on-chain and cannot be reversed from here, so paying per call with x402 means paying for every url you listed: list only the urls you want.",
     "It works in chunks of 3 urls, so a failure costs that chunk and not the whole job.",
     "No `screenshot` or `pdf` in a batch: every result is kept until you collect it. Ask for those one url at a time.",
   ],
@@ -148,6 +149,7 @@ export const crawlDoc = (c: Context<{ Bindings: Env }>) => ({
   },
   notes: [
     "Charged up front for the pages it is allowed to read. A crawl that finds twelve pages when it was allowed thirty refunds the eighteen it never touched, in one movement.",
+    "A refund is a credit to an API-key account. A wallet payment is settled on-chain and cannot be reversed from here, so paying per call with x402 means paying for the `limit` you asked for: map the site first, or set `limit` to what you actually want.",
     "It always reads the links —without them there is nowhere to go next— so they are part of the per-page price and come back in every page.",
     "No `screenshot` or `pdf`: every page is kept until you collect it.",
     "Two pages per alarm, so a failure costs that pair and not the whole crawl.",
@@ -155,7 +157,7 @@ export const crawlDoc = (c: Context<{ Bindings: Env }>) => ({
 });
 
 /**
- * `search/exa`: a query instead of a url.
+ * `search`: a query instead of a url.
  *
  * The engine is in the path on purpose. We are a middleman here —we have no index— and
  * the price is whatever Exa charges, read from its own payment challenge. Hiding which
@@ -163,7 +165,7 @@ export const crawlDoc = (c: Context<{ Bindings: Env }>) => ({
  * it gets its own path rather than silently changing what you bought.
  */
 export const searchDoc = (c: Context<{ Bindings: Env }>) => ({
-  endpoint: `POST ${prefix(c)}/search/exa`,
+  endpoint: `POST ${prefix(c)}/search`,
   description:
     "Search the web with Exa's index. A query instead of a url, for when you do not know where to look.",
   engine: ENGINE,

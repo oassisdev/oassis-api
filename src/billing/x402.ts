@@ -40,7 +40,7 @@ const SEGMENT: Record<Route, string> = {
   batch: "scrape/batch",
   map: "map",
   crawl: "crawl",
-  search: "search/exa",
+  search: "search",
 };
 
 /** What a search costs is Exa's to say, read from its own challenge on every call. */

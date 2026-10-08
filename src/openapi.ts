@@ -50,7 +50,7 @@ const PAID = [
   { path: "scrape/batch", build: batchDoc, tool: "web_scrape_batch", summary: "Read a list of urls", from: PER_FORMAT.markdown },
   { path: "map", build: mapDoc, tool: "web_map", summary: "List a site's urls", from: mapPrice(false) },
   { path: "crawl", build: crawlDoc, tool: "web_crawl", summary: "Follow a site's links and read it", from: PER_FORMAT.markdown },
-  { path: "search/exa", build: searchDoc, tool: "web_search_exa", summary: "Search the web", from: 7_000 },
+  { path: "search", build: searchDoc, tool: "web_search_exa", summary: "Search the web", from: 7_000 },
 ] as const;
 
 /**
@@ -202,8 +202,7 @@ export function llmsTxt(c: Context<{ Bindings: Env }>): string {
 
   lines.push("## MCP");
   lines.push("");
-  lines.push(`Streamable HTTP at \`${base}/mcp\`. \`initialize\` and \`tools/list\` are free, and a`);
-  lines.push("keyless client gets a small daily allowance so the first call works without an account.");
+  lines.push(`Streamable HTTP at \`${base}/mcp\`. Every tool works without a key, except \`web_search_exa\`, which is paid.`);
   lines.push("");
   lines.push("## Machine-readable");
   lines.push("");

@@ -24,15 +24,16 @@ const bothPaths = (suffix: string) => [`/web/v1/${suffix}`, `/v1/${suffix}`];
 
 export const feedbackRequest = z
   .object({
-    /** The only field worth aggregating: did the answer do the job or not. */
-    verdict: z.enum(["good", "bad"]),
-    /** Which endpoint it is about, as you called it. */
-    route: z.string().min(1).max(120).optional(),
-    /** The jobId or sessionId it happened on, so it can be looked up. */
-    reference: z.string().min(1).max(200).optional(),
-    /** The page that came out wrong, which is usually the fastest way to reproduce it. */
-    url: z.string().url().optional(),
-    comment: z.string().min(1).max(2_000).optional(),
+    verdict: z.enum(["good", "bad"]).describe("Did the answer do the job or not."),
+    route: z.string().min(1).max(120).optional().describe("Which tool or endpoint it is about, as you called it."),
+    reference: z
+      .string()
+      .min(1)
+      .max(200)
+      .optional()
+      .describe("The jobId or sessionId it happened on, so it can be looked up."),
+    url: z.string().url().optional().describe("The page that came out wrong: usually the fastest way to reproduce it."),
+    comment: z.string().min(1).max(2_000).optional().describe("What you expected and what you got."),
   })
   .strict()
   .superRefine((v, ctx) => {

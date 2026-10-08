@@ -214,7 +214,12 @@ export const actRequest = z
  * and a base64 screenshot or PDF per URL turns that into megabytes of stored job.
  * Ask for those one URL at a time, where they stream straight back.
  */
-const TOO_HEAVY_FOR_BATCH = ["screenshot", "pdf"] as const;
+export const TOO_HEAVY_FOR_BATCH = ["screenshot", "pdf"] as const;
+
+/** The formats a batch or a crawl does take, which is what their catalogue publishes. */
+export const LIGHT_FORMATS = FORMATS.filter(
+  (f) => !(TOO_HEAVY_FOR_BATCH as readonly string[]).includes(f),
+);
 
 /**
  * A batch: the same request, but with many urls and no single `url`. It answers
@@ -223,7 +228,10 @@ const TOO_HEAVY_FOR_BATCH = ["screenshot", "pdf"] as const;
  */
 export const batchRequest = scrapeRequest
   .innerType()
-  .omit({ url: true, html: true })
+  // The options of the formats it refuses go too: accepting `screenshot: { type: "jpeg" }`
+  // for a format that is rejected two lines later is dead weight, and a generated
+  // catalogue would publish it as if it did something.
+  .omit({ url: true, html: true, screenshot: true, pdf: true })
   .extend({ urls: z.array(z.string().url()).min(2).max(50) })
   .strict()
   .superRefine((v, ctx) => {
@@ -262,11 +270,14 @@ const siteFilters = {
 export const mapRequest = z
   .object({
     url: z.string().url(),
-    limit: z.number().int().min(1).max(5_000).default(1_000),
-    /** Render the page too, to catch what the sitemap does not list. */
-    includePage: z.boolean().optional(),
-    /** Keep only urls containing this text. */
-    search: z.string().min(1).max(200).optional(),
+    limit: z.number().int().min(1).max(5_000).default(1_000).describe("Urls to return. Up to 5000."),
+    includePage: z
+      .boolean()
+      .optional()
+      .describe(
+        "Render the page too, to catch urls the sitemap does not list. `false` uses no browser at all and costs a third.",
+      ),
+    search: z.string().min(1).max(200).optional().describe("Keep only urls containing this text."),
     ...siteFilters,
   })
   .strict();
@@ -280,13 +291,23 @@ export type MapRequest = z.infer<typeof mapRequest>;
  */
 export const crawlRequest = scrapeRequest
   .innerType()
-  .omit({ url: true, html: true })
+  .omit({ url: true, html: true, screenshot: true, pdf: true })
   .extend({
     url: z.string().url(),
-    /** Pages this crawl may read. Charged up front; what is not read comes back. */
-    limit: z.number().int().min(1).max(200).default(25),
-    /** How far from the starting page to follow links. */
-    maxDepth: z.number().int().min(0).max(5).default(2),
+    limit: z
+      .number()
+      .int()
+      .min(1)
+      .max(200)
+      .default(25)
+      .describe("Pages this crawl may read, up to 200. Charged up front; what it does not read comes back."),
+    maxDepth: z
+      .number()
+      .int()
+      .min(0)
+      .max(5)
+      .default(2)
+      .describe("How far from the starting page to follow links. 0 reads only the starting page."),
     ...siteFilters,
   })
   .strict()
@@ -309,20 +330,29 @@ export const crawlRequest = scrapeRequest
 export type CrawlRequest = z.infer<typeof crawlRequest>;
 
 /**
- * `search`: a query instead of a url. Served at `/search/exa` because the engine is part
+ * `search`: a query instead of a url. Served at `/search`; the engine is part
  * of what you are buying — the price is Exa's, and hiding whose index answered would
  * make that impossible to check.
  */
 export const searchRequest = z
   .object({
-    query: z.string().min(1).max(500),
-    limit: z.number().int().min(1).max(50).default(10),
-    /** Text snippets alongside each result. On by default: a bare url is rarely enough. */
-    snippets: z.boolean().optional(),
-    domains: z.array(z.string().min(1)).max(20).optional(),
-    excludeDomains: z.array(z.string().min(1)).max(20).optional(),
-    /** Only results published after this date (ISO). */
-    since: z.string().min(4).max(30).optional(),
+    query: z.string().min(1).max(500).describe("What to search for."),
+    limit: z.number().int().min(1).max(50).default(10).describe("Results to return. Up to 50."),
+    snippets: z
+      .boolean()
+      .optional()
+      .describe("Text alongside each result. On by default: a bare url is rarely enough."),
+    domains: z
+      .array(z.string().min(1))
+      .max(20)
+      .optional()
+      .describe("Only these domains, subdomains included: `example.com` also matches `docs.example.com`."),
+    excludeDomains: z
+      .array(z.string().min(1))
+      .max(20)
+      .optional()
+      .describe("Never these domains, subdomains included."),
+    since: z.string().min(4).max(30).optional().describe("Only results published after this ISO date."),
   })
   .strict();
 

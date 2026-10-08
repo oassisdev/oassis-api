@@ -110,7 +110,7 @@ app.get("/", (c) => {
       "GET /web/v1/account/transactions",
       "GET /web/v1/account/sessions",
       "POST /web/v1/feedback",
-      "POST /web/v1/search/exa",
+      "POST /web/v1/search",
       "POST /web/v1/scrape/batch",
       "GET /web/v1/scrape/batch/:id",
       "DELETE /web/v1/scrape/batch/:id",
@@ -448,30 +448,37 @@ app.on("POST", bothPaths("map"), async (c) => {
   }, servedText(c));
 
   /**
-   * A map that found nothing is work that did not happen.
+   * An empty list is two different answers, and only one of them is a failure.
    *
-   * This marked `success: false` and charged anyway, while scrape in the same situation
-   * refunds and answers 502. Mapping a domain that does not resolve cost $0.0003 and
-   * returned an empty list with a 200 — which is the promise on our own front page
-   * broken by the route next door to the one that keeps it.
+   * The site gave nothing —unreachable, or no sitemap and the page not asked for— and
+   * there is nothing to charge for: that refunds and answers 502, as scrape does in the
+   * same situation. It used to charge and say `success: false`, so mapping a domain that
+   * does not resolve cost money.
+   *
+   * But a site that offered its urls and saw `search` or `includePaths` discard every
+   * one of them is a complete answer: the work happened, the filter was the caller's, and
+   * "none of your 7 urls match" is worth knowing. That is a 200 with an empty list, and
+   * `offered` in the metadata says the filter is the reason, not the site.
    */
-  if (res.urls.length === 0) {
+  if (res.urls.length === 0 && res.offered === 0) {
     await refund(c, "refund: nothing to map");
     return c.json(
-      { success: false, urls: [], metadata: { url: parsed.data.url, returned: 0, discovered: 0, ms: Date.now() - started } },
+      { success: false, urls: [], metadata: { url: parsed.data.url, returned: 0, discovered: 0, offered: 0, sitemaps: res.sitemaps, ms: Date.now() - started } },
       502,
     );
   }
 
   return c.json({
-    success: res.urls.length > 0,
+    success: true,
     urls: res.urls,
     metadata: {
       url: parsed.data.url,
-      // What came back, and what there was before the limit cut it: the second is
-      // what tells a caller whether to ask for more.
+      // What came back, what there was before the limit cut it, and what the site
+      // offered before the caller's own filters ran: between them they say whether to
+      // ask for more and, on an empty list, whose filter emptied it.
       returned: res.urls.length,
       discovered: res.discovered,
+      offered: res.offered,
       sources: res.sources,
       sitemaps: res.sitemaps,
       ms: Date.now() - started,
@@ -551,9 +558,9 @@ async function crawlFor(
 }
 
 
-for (const route of bothPaths("search/exa")) app.get(route, (c) => cacheableDoc(c, searchDoc(c)));
+for (const route of bothPaths("search")) app.get(route, (c) => cacheableDoc(c, searchDoc(c)));
 
-app.on("POST", bothPaths("search/exa"), async (c) => {
+app.on("POST", bothPaths("search"), async (c) => {
   const parsed = searchRequest.safeParse(parsedBody(c));
   if (!parsed.success) return badRequest(c, parsed.error);
 

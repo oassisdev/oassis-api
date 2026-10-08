@@ -84,7 +84,6 @@ changes when the system does.</p>
 <tr><td>Browser sessions and jobs: when opened, how much charged</td><td>Billing and support</td><td>Until the account is deleted</td></tr>
 <tr><td>Feedback you choose to send</td><td>To fix what is broken</td><td>Until acted on</td></tr>
 <tr><td>Rendered pages, cached</td><td>So a repeat read is cheaper for you</td><td>Short-lived, then discarded</td></tr>
-<tr><td>A one-way fingerprint of the caller's IP address</td><td>To count free calls without accounts</td><td>Rolling daily counters</td></tr>
 <tr><td>A short request log: time, route, status, how long it took, your IP, your
 user-agent, and a truncated copy of the request and the answer</td><td>So a call can be
 explained when something goes wrong</td><td>The most recent ${TRACE_CAP.toLocaleString("en")}
@@ -92,12 +91,9 @@ requests, and never more than ${TRACE_DAYS} days</td></tr>
 </tbody>
 </table>
 
-<h3>About the free tier and your IP address</h3>
+<h3>Calls with no key and your IP address</h3>
 
-<p>Calls made with no key and no account are counted against a <strong>one-way hash of the
-IP address</strong>, truncated. We do this so a free allowance can exist at all without
-asking anyone to sign up. <strong>The address itself is not stored</strong> in that counter,
-and the hash cannot be turned back into it.</p>
+<p>Calls made with no key and no account are not counted per address: there is no daily allowance to keep. The request log above still records the address of each call.</p>
 
 <h3>About the request log</h3>
 

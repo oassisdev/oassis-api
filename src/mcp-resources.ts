@@ -12,7 +12,6 @@
 
 import type { Context } from "hono";
 import { llmsTxt, openapi } from "./openapi";
-import { FREE_EVER, FREE_PER_DAY } from "./free-tier";
 import type { Env } from "./types";
 
 type Ctx = Context<{ Bindings: Env }>;
@@ -95,5 +94,4 @@ export function PROMPTS(_c: Ctx) {
 
 /** What a keyless client gets, said once here so the prompts and the docs cannot disagree. */
 export const freeLine = () =>
-  `Without a key you get ${FREE_PER_DAY.scrape} page reads and ${FREE_PER_DAY.map} site listings a day, ` +
-  `plus one browser session and ${FREE_EVER.searches} searches.`;
+  "Without a key, every tool works over MCP except web_search_exa, which is paid.";
