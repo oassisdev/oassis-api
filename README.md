@@ -89,8 +89,7 @@ Base; the facilitator pays the gas.
 Step 3: repeat the **same request** with the payment proof in the `PAYMENT-SIGNATURE` header.
 The response comes back with `PAYMENT-RESPONSE`.
 
-Over MCP, the same charge applies when a call is outside the free tier: the server answers with
-the payment challenge and the same SDK pays it.
+Over MCP there is no payment step: every tool except `web_search_exa` is free. Search is paid over HTTP, with x402 or an API key.
 
 ---
 
