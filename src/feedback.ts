@@ -9,7 +9,7 @@
  * the report is worth more to us than the fraction of a cent.
  */
 
-import { Hono, type Context } from "hono";
+import { Hono } from "hono";
 import { z } from "zod";
 import { accountForKey } from "./billing/accounts";
 import { badRequest } from "./http";
@@ -17,6 +17,9 @@ import type { Env } from "./types";
 
 /** A day's worth of reports per account. Free to send is not free to store. */
 const MAX_PER_DAY = 50;
+
+/** Reports with no key, across every anonymous caller, per day. */
+const MAX_ANONYMOUS_PER_DAY = 200;
 
 export const feedback = new Hono<{ Bindings: Env }>();
 
@@ -49,23 +52,44 @@ export const feedbackRequest = z
     }
   });
 
-async function caller(c: Context<{ Bindings: Env }>): Promise<string | Response> {
-  const key = (c.req.header("authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
-  if (!key) {
-    return c.json(
-      {
-        success: false,
-        error: "unauthorized",
-        message: "Send your API key in `Authorization: Bearer oas_…` so we can follow up on what you report.",
-      },
-      401,
-    );
-  }
-  const account = await accountForKey(c.env.BILLING, key);
-  if (!account) {
-    return c.json({ success: false, error: "unauthorized", message: "Invalid or revoked key." }, 401);
-  }
-  return account.id;
+/** The account behind the key, null when there is no key, or "invalid" when the key is unknown. */
+export async function reporter(env: Env, key: string): Promise<string | null | "invalid"> {
+  if (!key) return null;
+  const account = await accountForKey(env.BILLING, key);
+  return account ? account.id : "invalid";
+}
+
+export async function storeFeedback(
+  env: Env,
+  who: string | null,
+  data: z.infer<typeof feedbackRequest>,
+  fallbackRoute?: string,
+): Promise<"stored" | "too_many"> {
+  const since = Date.now() - 86_400_000;
+  const today = who
+    ? await env.BILLING.prepare(`SELECT COUNT(*) AS n FROM feedback WHERE account = ? AND at >= ?`)
+        .bind(who, since)
+        .first<{ n: number }>()
+    : await env.BILLING.prepare(`SELECT COUNT(*) AS n FROM feedback WHERE account IS NULL AND at >= ?`)
+        .bind(since)
+        .first<{ n: number }>();
+  if ((today?.n ?? 0) >= (who ? MAX_PER_DAY : MAX_ANONYMOUS_PER_DAY)) return "too_many";
+
+  await env.BILLING.prepare(
+    `INSERT INTO feedback (account, at, verdict, route, reference, url, comment)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  )
+    .bind(
+      who,
+      Date.now(),
+      data.verdict,
+      data.route ?? fallbackRoute ?? null,
+      data.reference ?? null,
+      data.url ?? null,
+      data.comment ?? null,
+    )
+    .run();
+  return "stored";
 }
 
 for (const route of bothPaths("feedback")) {
@@ -84,7 +108,7 @@ for (const route of bothPaths("feedback")) {
       },
         notes: [
           "A `bad` verdict needs a `comment`, a `url` or a `reference`: without one there is nothing to look at.",
-          `Up to ${MAX_PER_DAY} reports a day per account.`,
+          `No key needed. With a key, up to ${MAX_PER_DAY} reports a day per account; without one, ${MAX_ANONYMOUS_PER_DAY} a day across all anonymous callers.`,
         ],
       },
       200,
@@ -93,8 +117,8 @@ for (const route of bothPaths("feedback")) {
   );
 
   feedback.post(route, async (c) => {
-    const who = await caller(c);
-    if (who instanceof Response) return who;
+    const who = await reporter(c.env, (c.req.header("authorization") ?? "").replace(/^Bearer\s+/i, "").trim());
+    if (who === "invalid") return c.json({ success: false, error: "unauthorized", message: "Invalid or revoked key." }, 401);
 
     let body: unknown;
     try {
@@ -106,34 +130,23 @@ for (const route of bothPaths("feedback")) {
     const parsed = feedbackRequest.safeParse(body);
     if (!parsed.success) return badRequest(c, parsed.error);
 
-    const today = await c.env.BILLING.prepare(
-      `SELECT COUNT(*) AS n FROM feedback WHERE account = ? AND at >= ?`,
-    )
-      .bind(who, Date.now() - 86_400_000)
-      .first<{ n: number }>();
-    if ((today?.n ?? 0) >= MAX_PER_DAY) {
+    if ((await storeFeedback(c.env, who, parsed.data)) === "too_many") {
       return c.json(
         {
           success: false,
           error: "too_many_reports",
-          message: `Up to ${MAX_PER_DAY} reports a day per account. Send the rest tomorrow, or put several findings in one comment.`,
+          message: who
+            ? `Up to ${MAX_PER_DAY} reports a day per account. Send the rest tomorrow, or put several findings in one comment.`
+            : "Today's anonymous reports are used up across all callers. Send them tomorrow, or with an API key.",
         },
         429,
       );
     }
 
-    const { verdict, route: about, reference, url, comment } = parsed.data;
-    await c.env.BILLING.prepare(
-      `INSERT INTO feedback (account, at, verdict, route, reference, url, comment)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    )
-      .bind(who, Date.now(), verdict, about ?? null, reference ?? null, url ?? null, comment ?? null)
-      .run();
-
     return c.json({
       success: true,
       message:
-        verdict === "bad"
+        parsed.data.verdict === "bad"
           ? "Logged. If you left a url or a reference, it is enough to reproduce it."
           : "Logged, and thank you: knowing what works is as useful as knowing what does not.",
     });

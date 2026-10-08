@@ -47,7 +47,7 @@ import { origin } from "./http";
 import { servedText } from "./landing";
 import { PROMPTS, RESOURCES, freeLine, readResource } from "./mcp-resources";
 import { VERSION } from "./version";
-import { feedbackRequest } from "./feedback";
+import { feedbackRequest, storeFeedback } from "./feedback";
 import { mapSite } from "./map";
 import type { Env } from "./types";
 import type { Message } from "./session/do";
@@ -470,28 +470,15 @@ async function callTool(
     return c.json(toolResult(id, await res.text(), !res.ok));
   }
 
-  /** Reporting a bad answer is free: paying to tell us we are broken makes no sense. */
+  /** Reporting a bad answer is free, with or without a key. */
   if (name === "web_feedback") {
     const who = await callerAccount(c);
     if (who === "invalid") return c.json(toolResult(id, "Invalid or revoked key.", true));
-    if (!who) {
-      return c.json(
-        toolResult(
-          id,
-          "Send your API key in `Authorization: Bearer oas_…` so we can follow up on what you report.",
-          true,
-        ),
-      );
-    }
     const parsed = feedbackRequest.safeParse(args);
     if (!parsed.success) return c.json(toolResult(id, issuesText(parsed.error.issues), true));
-    const { verdict, route: about, reference, url, comment } = parsed.data;
-    await c.env.BILLING.prepare(
-      `INSERT INTO feedback (account, at, verdict, route, reference, url, comment)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    )
-      .bind(who, Date.now(), verdict, about ?? "mcp", reference ?? null, url ?? null, comment ?? null)
-      .run();
+    if ((await storeFeedback(c.env, who, parsed.data, "mcp")) === "too_many") {
+      return c.json(toolResult(id, "Today's anonymous reports are used up. Send them tomorrow, or with an API key.", true));
+    }
     return c.json(toolResult(id, "Logged. Thank you."));
   }
 

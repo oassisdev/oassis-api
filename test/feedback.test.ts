@@ -64,16 +64,23 @@ describe("what a report needs", () => {
 });
 
 describe("who can report", () => {
-  it("a key is required, and the message says why", async () => {
-    const { env } = fakeEnv();
-    const r = await send({ verdict: "good" }, null, env);
-    expect(r.status).toBe(401);
-    expect(((await r.json()) as any).message).toMatch(/follow up/);
+  it("needs no key: an anonymous report is stored with no account", async () => {
+    const { env, writes } = fakeEnv();
+    const r = await send({ verdict: "bad", comment: "button missing" }, null, env);
+    expect(r.status).toBe(200);
+    expect(writes[0]?.[0]).toBeNull();
   });
 
   it("an unknown key is rejected", async () => {
     const { env } = fakeEnv({ known: false });
     expect((await send({ verdict: "good" }, "oas_nope", env)).status).toBe(401);
+  });
+
+  it("anonymous reports stop at the shared daily cap", async () => {
+    const { env, writes } = fakeEnv({ today: 200 });
+    const r = await send({ verdict: "good" }, null, env);
+    expect(r.status).toBe(429);
+    expect(writes).toEqual([]);
   });
 });
 
