@@ -10,8 +10,8 @@ browser**. Pay per call with a wallet: **no API key, no signup, no monthly plan.
 
 ## Try it now, no account (MCP)
 
-The free tier is for MCP clients. Send your own client `User-Agent`: requests carrying the
-default of `curl` or an HTTP library are refused.
+Over MCP every tool works without a key or an account, except `web_search_exa`, which is paid.
+Send your own client `User-Agent`: requests carrying the default of `curl` or an HTTP library are refused.
 
 List the 11 tools:
 
@@ -23,7 +23,7 @@ curl -X POST https://api.oassis.dev/mcp \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 ```
 
-Map oassis.dev (free tier: 10 site maps a day per client):
+Map oassis.dev (free over MCP):
 
 ```bash
 curl -X POST https://api.oassis.dev/mcp \
@@ -40,8 +40,6 @@ Real response (trimmed):
 "https://oassis.dev/openapi.json","https://oassis.dev/privacy","https://oassis.dev/terms",
 "https://oassis.dev/support"],"discovered":7,"offered":14,"sources":{"sitemap":7,"page":0}}
 
-(Free tier left: 0 reads and 8 site listings today, 1 session and 5 searches ever.
-A key or a wallet payment removes the limits.)
 ```
 
 Read a page (`web_scrape`) with the same client:
@@ -54,14 +52,12 @@ curl -X POST https://api.oassis.dev/mcp \
   -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"web_scrape","arguments":{"url":"https://oassis.dev","formats":["markdown"]}}}'
 ```
 
-Once the 10 daily reads are used up, the response says so and offers the paid route:
+Search is the one paid tool over MCP. Calling it without a key explains the price and how to pay:
 
 ```
-10 free reads a day, and today's are used. They come back tomorrow.
+web_search_exa is paid, not free: each search costs $0.007, which is the price Exa charges, passed through.
 Two ways to carry on: pay per call with a wallet (x402, USDC on Base), or use an API key.
 ```
-
-Free allowances are counted per IP address and per UTC day.
 
 ---
 
@@ -100,7 +96,7 @@ the payment challenge and the same SDK pays it.
 
 ## The 11 operations
 
-Each one is served at `api.oassis.dev/web/v1/…` and at `web.oassis.dev/v1/…`. Both hosts count and charge the same.
+Over HTTP each one is paid. Each one is served at `api.oassis.dev/web/v1/…` and at `web.oassis.dev/v1/…`. Both hosts count and charge the same.
 
 | Method | Path | What it does | MCP tool | Price |
 |---|---|---|---|---|
@@ -116,7 +112,7 @@ Each one is served at `api.oassis.dev/web/v1/…` and at `web.oassis.dev/v1/…`
 | POST | `/web/v1/search` | Web search with Exa's index | `web_search_exa` | What Exa charges (≈ $0.007) |
 | POST | `/web/v1/feedback` | Report a result that was wrong | `web_feedback` | Free |
 
-Any `GET` on a route returns, for free, the fields it expects and what it costs.
+Over MCP, every tool in this table is free except `web_search_exa`. Any `GET` on a route returns, for free, the fields it expects and what it costs.
 
 ---
 
@@ -143,19 +139,17 @@ Example: `markdown` + `controls` of one page = $0.002. A 10-page crawl with `mar
 
 ---
 
-## Free tier over MCP
+## Free over MCP
 
-| Item | Limit |
+| Item | Rule |
 |---|---|
-| `web_scrape` (page reads) | 10 per day |
-| `web_map` (site listings) | 10 per day |
-| Pages of the same site per day | 3 |
-| Browser session | 1, ever |
-| Actions in that session | 10, ever |
-| Searches | 5, ever |
-| `web_crawl`, `web_scrape_batch` | Not included: need payment or a key |
+| Every tool except `web_search_exa` | Free, no key, no account |
+| `web_search_exa` | Paid: Exa's price, passed through |
+| Client identification | Send your own `User-Agent`; HTTP-library defaults are refused |
+| `robots.txt` | Respected on free reads |
+| Browser sessions | 3 open at once across all keyless callers |
 
-Counters are per client (IP) and per UTC day.
+Paying per call over HTTP (x402) or with an API key reads the same content on your own responsibility, with no MCP restrictions.
 
 ---
 
