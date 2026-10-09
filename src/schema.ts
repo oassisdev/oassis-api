@@ -275,7 +275,7 @@ export const mapRequest = z
       .boolean()
       .optional()
       .describe(
-        "Render the page too, to catch urls the sitemap does not list. `false` uses no browser at all and costs a third.",
+        "Render the page too, to catch urls the sitemap does not list. `false` uses no browser at all, so it costs less: $0.001 against $0.0015.",
       ),
     search: z.string().min(1).max(200).optional().describe("Keep only urls containing this text."),
     ...siteFilters,
