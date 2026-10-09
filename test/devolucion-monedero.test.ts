@@ -28,7 +28,8 @@ describe("el límite de la devolución", () => {
 
   it("el README no promete una devolución que el monedero no recibe", () => {
     const readme = readFileSync("README.md", "utf8");
-    expect(readme).toMatch(/needs an API key/);
-    expect(readme).toMatch(/with x402 you pay for what you ask for/);
+    expect(readme).toMatch(/wallet payment \(x402\) is settled on-chain/);
+    expect(readme).toMatch(/cannot be reversed/);
+    expect(readme).toMatch(/API-key account/);
   });
 });

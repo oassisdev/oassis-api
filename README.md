@@ -134,6 +134,8 @@ Over MCP, every tool in this table is free except `web_search_exa`. Any `GET` on
 Minimum charge per call: $0.001. The price is quoted before the work and charged after;
 **if the work does not happen, you are not charged.** Balances do not expire and there is no monthly fee.
 
+Crawls and batches are charged up front for the pages or urls they may read. A refund for work that never ran is a credit to an API-key account. A wallet payment (x402) is settled on-chain and cannot be reversed from here, so with x402 you pay for every url or the `limit` you ask for: map the site first.
+
 Example: `markdown` + `controls` of one page = $0.002. A 10-page crawl with `markdown` = $0.02, because each page charges its outputs plus its links.
 
 ---

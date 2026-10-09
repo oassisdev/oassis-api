@@ -27,6 +27,7 @@ import { billing, parsedBody } from "./billing";
 import { mcp } from "./mcp";
 import { account } from "./account";
 import { feedback } from "./feedback";
+import serverManifest from "../server.json";
 import {
   accountForKey,
   closeSession,
@@ -637,6 +638,13 @@ app.get("/sitemap.xml", (c) =>
  * reads before its first call.
  */
 app.get("/openapi.json", (c) => cacheableDoc(c, openapi(c)));
+/**
+ * The MCP manifest at the standard path, so a registry or a client can find the server from the
+ * domain alone. The same document the official registry publishes.
+ */
+app.get("/.well-known/mcp/server.json", (c) =>
+  c.json(serverManifest, 200, { "cache-control": "public, max-age=3600" }),
+);
 app.get("/llms.txt", (c) =>
   c.text(llmsTxt(c), 200, { "cache-control": "public, max-age=3600", "content-type": "text/plain; charset=utf-8" }),
 );
