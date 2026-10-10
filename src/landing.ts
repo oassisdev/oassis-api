@@ -274,25 +274,25 @@ ${LANDING_STYLE}
 <button type="button" class="workflow-step" data-step="crawl" aria-pressed="false" aria-controls="panel-crawl"><span>03</span>Crawl</button>
 <button type="button" class="workflow-step" data-step="browser" aria-pressed="false" aria-controls="panel-browser"><span>04</span>Browser session</button>
 <button type="button" class="workflow-step" data-step="act" aria-pressed="false" aria-controls="panel-act"><span>05</span>Act</button>
-</div><div class="workflow-view"><div class="workflow-header"><span>Task: research a supplier's catalog</span><span class="demo-label">Illustrative demo</span></div>
+</div><div class="workflow-view"><div class="workflow-header"><span>Task: read a page and act on it</span><span class="demo-label">Illustrative demo</span></div>
 <div class="workflow-panel" id="panel-search"><h3>Start with a question.</h3><p>Find candidate pages with Exa search. Your agent chooses which sources to read next.</p><pre><code>web_search_exa
-{ "query": "industrial sensor suppliers", "limit": 5 }
+{ "query": "your search terms", "limit": 5 }
 
 Example result
-{ "title": "Sensor catalog", "url": "https://supplier.example/catalog" }</code></pre></div>
+{ "title": "Example title", "url": "https://example.com/page" }</code></pre></div>
 <div class="workflow-panel" id="panel-scrape" hidden><h3>Read content. See the controls.</h3><p>Get markdown and the links, buttons and fields your agent can interact with in the same call.</p><pre><code>web_scrape
-{ "url": "https://supplier.example/catalog",
+{ "url": "https://example.com/page",
   "formats": ["markdown", "controls"] }
 
-Example content: "Industrial sensors. View specifications."
-Example control: { "role": "button", "name": "Filter products" }</code></pre></div>
+Example content: "Example page text."
+Example control: { "role": "button", "name": "Example button" }</code></pre></div>
 <div class="workflow-panel" id="panel-crawl" hidden><h3>Follow the useful pages.</h3><p>Map a site first, then crawl the pages you need. Collect the results from a background job.</p><pre><code>web_crawl
-{ "url": "https://supplier.example/catalog", "limit": 10 }
+{ "url": "https://example.com/page", "limit": 10 }
 
 Returns a jobId
 web_crawl_status { "jobId": "example-job" }</code></pre></div>
 <div class="workflow-panel" id="panel-browser" hidden><h3>Keep the browser open.</h3><p>Open a session when the page needs interaction. Observe the controls and continue on the same state.</p><pre><code>web_session_open
-{ "url": "https://supplier.example/catalog",
+{ "url": "https://example.com/page",
   "formats": ["controls", "markdown"] }
 
 Returns a sessionId and controls
