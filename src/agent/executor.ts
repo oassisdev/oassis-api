@@ -11,7 +11,7 @@ import { MAX_CONTEXT_CHARS, MAX_SOURCES, decideStatus, verifyResult, truncateEvi
 import { checkPublicUrl } from "./request";
 
 export type Status = "queued" | "running" | "completed" | "partial" | "failed" | "cancelled";
-export type OpKind = "plan" | "search" | "read" | "synthesis";
+export type OpKind = "start" | "plan" | "search" | "read" | "synthesis";
 
 export interface Operation {
   step: number;
@@ -143,7 +143,8 @@ export async function runStep(doc: TaskDocument, deps: Deps): Promise<boolean> {
   await deps.checkpoint(doc);
   const plan = await deps.plan(doc);
   // A planning call that gave no usable step is not billed: a failed call costs nothing.
-  charge(doc, "plan", plan ? CLIENT.planMicros : 0, step, plan !== null, plan ? plan.action : "no valid plan");
+  // Every planning call is billed, whether or not it gave a usable step: the model ran.
+  charge(doc, "plan", CLIENT.planMicros, step, plan !== null, plan ? plan.action : "no valid plan");
   doc.inflight = null;
   await deps.refreshCancel(doc);
   if (doc.cancel_requested) return finish(doc, deps, "cancelled");
@@ -218,8 +219,8 @@ export async function runStep(doc: TaskDocument, deps: Deps): Promise<boolean> {
     doc.sources.push({ id, url: plan.url, retrieved_at: new Date(deps.now()).toISOString(), evidence: t.text, truncated: t.truncated });
     charge(doc, "read", CLIENT.pageMicros, step, true, `${id}${t.truncated ? " (truncated)" : ""}`);
   } else {
-    // A read that returns nothing is not billed: the same rule as a failed call anywhere else.
-    charge(doc, "read", 0, step, false, page.error.slice(0, 160));
+    // A read that was attempted is billed even when it fails: the browser ran.
+    charge(doc, "read", CLIENT.pageMicros, step, false, page.error.slice(0, 160));
   }
   doc.inflight = null;
   await deps.checkpoint(doc);
@@ -255,7 +256,7 @@ async function finish(doc: TaskDocument, deps: Deps, forced?: "cancelled"): Prom
   doc.inflight = { op: "synthesis", micros: CLIENT.synthesisMicros, detail: "final answer" };
   await deps.checkpoint(doc);
   const raw = await deps.synthesize(doc);
-  charge(doc, "synthesis", raw ? CLIENT.synthesisMicros : 0, doc.steps, raw !== null, raw ? "answer" : "no valid answer");
+  charge(doc, "synthesis", CLIENT.synthesisMicros, doc.steps, raw !== null, raw ? "answer" : "no valid answer");
   doc.inflight = null;
 
   if (!raw) {

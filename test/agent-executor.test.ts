@@ -255,3 +255,17 @@ describe("an interrupted answer", () => {
   });
 });
 
+
+describe("what is billed when things fail", () => {
+  it("a planning call that gives no usable step is still billed", async () => {
+    const { deps } = world({ plans: [null, { action: "finish", reason: "done" }] });
+    const d = await run(doc(), deps);
+    expect(d.operations.find((o) => o.op === "plan" && !o.ok)?.micros).toBe(CLIENT.planMicros);
+  });
+  it("a page read that fails is still billed, because the browser ran", async () => {
+    const { deps } = world({ plans: [{ action: "read", url: "https://a.example/pricing", reason: "x" }, { action: "finish", reason: "y" }], pageOk: false, answer: null });
+    const d = doc({ candidates: [{ url: "https://a.example/pricing", title: "A" }] });
+    await run(d, deps);
+    expect(d.operations.find((o) => o.op === "read")?.micros).toBe(CLIENT.pageMicros);
+  });
+});

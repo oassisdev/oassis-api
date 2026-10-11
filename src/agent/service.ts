@@ -6,7 +6,7 @@
 import { inDollars } from "../billing/prices";
 import type { Env } from "../types";
 import { reserveTask } from "./billing";
-import { DEFAULT_MODEL } from "./rates";
+import { DEFAULT_MODEL, START_FEE_MICROS } from "./rates";
 import { taskRequest, checkPublicUrl } from "./request";
 import type { TaskDocument } from "./executor";
 
@@ -55,9 +55,9 @@ export function initialDocument(req: ReturnType<typeof taskRequest.parse>): Task
     started_at: null,
     steps: 0,
     invalid_plans: 0,
-    spent_micros: 0,
+    spent_micros: START_FEE_MICROS,
     inflight: null,
-    operations: [],
+    operations: [{ step: 0, op: "start", ok: true, detail: "accepted", micros: START_FEE_MICROS }],
     candidates: [],
     read_urls: [],
     sources: [],

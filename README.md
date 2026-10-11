@@ -198,18 +198,24 @@ Cancel with `POST /agent/v1/tasks/TASK_ID/cancel`. Cancelling a finished task ch
 spends is charged at the end, and the rest of the reserve is returned in the same transaction.
 A request that would exceed the balance is refused with `402` and nothing is reserved.
 
-**Prices.** Each client price is at least twice what the work costs us (a 100% markup, which is a 50% gross margin):
+**Prices.** Each client price is at least twice what one call costs us in the worst case (a 100%
+markup, which is a 50% gross margin). The start fee is charged once when a task is accepted:
 
 | Step | Charged |
 | --- | --- |
-| Planning call (model) | $0.003 |
-| Final answer (model) | $0.008 |
-| Page read (markdown) | $0.001 |
+| Start fee (task accepted) | $0.002 |
+| Planning call, each attempt | $0.006 |
+| Final answer, each attempt | $0.010 |
+| Page read, each attempt (markdown) | $0.003 |
 | Search | twice what Exa charged us, every time, including empty or uncertain results |
+| Get a task, cancel a task | free |
 
-A planning call or an answer that does not come back in a usable form is not charged. A page that
-cannot be read is not charged either. Each model call is capped (planning at 256 output tokens, the answer at
-1,500) and must return within 30 seconds; a call that runs past that counts as no answer.
+Every attempted model call and page read is charged, including the ones that fail: the model or the
+browser ran. A call that is refused before it runs (budget exhausted) is not attempted and not charged.
+Each model call is capped (planning at 256 output tokens, the answer at 1,500) and must return within
+30 seconds for planning and 60 seconds for the answer; a call that runs past its limit counts as attempted, and is charged.
+
+The minimum budget is $0.03: it pays the start fee, one planning call, one page read and one answer.
 
 **Idempotency.** `Idempotency-Key` is per account. The same key with the same request returns the
 same task. The same key with a different request is refused with `409`. Keys are kept with their

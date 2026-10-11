@@ -9,8 +9,8 @@ export const TASK_MODES = ["research"] as const;
 
 export const DEFAULT_LIMITS = { max_cost_usd: 0.1, max_duration_seconds: 180, max_steps: 10 } as const;
 export const MAX_LIMITS = { max_cost_usd: 1, max_duration_seconds: 900, max_steps: 20 } as const;
-/** Smaller budgets cannot pay for a planning call and an answer: the reserve for both is $0.012. */
-export const MIN_COST_USD = 0.02;
+/** The smallest budget that pays the start fee, one step and one answer: see MIN_BUDGET_MICROS in rates.ts. */
+export const MIN_COST_USD = 0.03;
 export const MAX_URLS = 5;
 
 export const taskRequest = z

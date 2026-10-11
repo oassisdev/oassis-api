@@ -79,7 +79,7 @@ async function askOnce<T>(ai: Ai, model: string, messages: { role: string; conte
   }
 }
 
-/** One planning call, retried once when the reply is not valid. */
+/** One planning call. One attempt: a bad reply is a charged, failed step, not a second charge. */
 export async function planNextStep(ai: Ai, doc: TaskDocument, model = DEFAULT_MODEL): Promise<Plan | null> {
   const known = [...doc.urls, ...doc.candidates.map((c) => c.url)];
   const candidates = doc.candidates.map((c) => `- ${c.url} (${c.title.slice(0, 120)})`).join("\n") || "(none yet)";
@@ -98,17 +98,13 @@ export async function planNextStep(ai: Ai, doc: TaskDocument, model = DEFAULT_MO
       ].join("\n\n"),
     },
   ];
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const plan = await askOnce(ai, model, messages, planJsonSchema, (v) => {
-      const p = planSchema.safeParse(normalizePlan(v));
-      return p.success ? (p.data as Plan) : null;
-    }, PLAN_MAX_TOKENS);
-    if (plan) return plan;
-  }
-  return null;
+  return askOnce(ai, model, messages, planJsonSchema, (v) => {
+    const p = planSchema.safeParse(normalizePlan(v));
+    return p.success ? (p.data as Plan) : null;
+  }, PLAN_MAX_TOKENS);
 }
 
-/** The final answer, retried once when it does not match the contract. */
+/** The final answer. One attempt, like planning. */
 export async function synthesize(ai: Ai, doc: TaskDocument, model = DEFAULT_MODEL): Promise<TaskResult | null> {
   const messages = [
     {
@@ -120,12 +116,8 @@ export async function synthesize(ai: Ai, doc: TaskDocument, model = DEFAULT_MODE
     },
     { role: "user", content: `Task: ${doc.task}\n\nEvidence:\n${evidenceContext(doc)}` },
   ];
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const result = await askOnce(ai, model, messages, resultJsonSchema, (v) => {
-      const p = resultSchema.safeParse(v);
-      return p.success ? p.data : null;
-    }, ANSWER_MAX_TOKENS);
-    if (result) return result;
-  }
-  return null;
+  return askOnce(ai, model, messages, resultJsonSchema, (v) => {
+    const p = resultSchema.safeParse(v);
+    return p.success ? p.data : null;
+  }, ANSWER_MAX_TOKENS);
 }

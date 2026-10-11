@@ -16,13 +16,17 @@ import { planNextStep, synthesize } from "./model";
 import { DEFAULT_MODEL } from "./rates";
 
 const STEP_GAP_MS = 250;
-/** One model call may not hold a task longer than this. A call that runs past it is treated as no answer. */
-const MODEL_TIMEOUT_MS = 30_000;
+/**
+ * One model call may not hold a task longer than these. A call that runs past its limit is treated as
+ * no answer. The answer gets more time: at 1,500 output tokens it takes longer than a planning step.
+ */
+const PLAN_TIMEOUT_MS = 30_000;
+const ANSWER_TIMEOUT_MS = 60_000;
 
-function bounded<T>(work: Promise<T>, fallback: T): Promise<T> {
+function bounded<T>(work: Promise<T>, fallback: T, ms: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const limit = new Promise<T>((resolve) => {
-    timer = setTimeout(() => resolve(fallback), MODEL_TIMEOUT_MS);
+    timer = setTimeout(() => resolve(fallback), ms);
   });
   return Promise.race([work, limit]).finally(() => clearTimeout(timer));
 }
@@ -89,7 +93,7 @@ export class AgentTask extends DurableObject<Env> {
     return {
       now: () => Date.now(),
       checkpoint: async (doc) => this.save(taskId, doc),
-      plan: (doc) => bounded(planNextStep(env.AI, doc, model), null),
+      plan: (doc) => bounded(planNextStep(env.AI, doc, model), null, PLAN_TIMEOUT_MS),
       refreshCancel: async (doc) => {
         const row = await env.BILLING.prepare(`SELECT cancel_requested FROM agent_tasks WHERE id = ?1`)
           .bind(taskId)
@@ -118,7 +122,7 @@ export class AgentTask extends DurableObject<Env> {
           return { ok: false, error: e instanceof Error ? e.message : String(e) };
         }
       },
-      synthesize: (doc) => bounded(synthesize(env.AI, doc, model), null),
+      synthesize: (doc) => bounded(synthesize(env.AI, doc, model), null, ANSWER_TIMEOUT_MS),
     };
   }
 }

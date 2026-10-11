@@ -70,10 +70,10 @@ describe("model replies", () => {
     expect(await planNextStep(fakeAi([{ response: '{"action":"finish","reason":"done"}' }]), doc)).toEqual({ action: "finish", reason: "done" });
   });
 
-  it("rejects a plan with an unknown action, and retries once", async () => {
+  it("rejects a plan with an unknown action, with one attempt only", async () => {
     const ai = fakeAi([{ response: { action: "purchase", reason: "x" } }, { response: { action: "finish", reason: "ok" } }]);
-    expect(await planNextStep(ai, doc)).toEqual({ action: "finish", reason: "ok" });
-    expect(ai.calls).toBe(2);
+    expect(await planNextStep(ai, doc)).toBeNull();
+    expect(ai.calls).toBe(1);
   });
 
   it("returns null when the model never gives a valid reply", async () => {

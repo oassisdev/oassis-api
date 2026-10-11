@@ -119,7 +119,7 @@ function agentTaskPaths(): Record<string, unknown> {
                     type: "object",
                     additionalProperties: false,
                     properties: {
-                      max_cost_usd: { type: "number", minimum: 0.02, maximum: 1, default: 0.1 },
+                      max_cost_usd: { type: "number", minimum: 0.03, maximum: 1, default: 0.1 },
                       max_duration_seconds: { type: "integer", minimum: 30, maximum: 900, default: 180 },
                       max_steps: { type: "integer", minimum: 1, maximum: 20, default: 10 },
                     },
