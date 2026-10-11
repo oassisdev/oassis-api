@@ -17,6 +17,7 @@ import { describe, expect, it } from "vitest";
 import type { ZodTypeAny } from "zod";
 import { mcp } from "../src/mcp";
 import { feedbackRequest } from "../src/feedback";
+import { taskRequest } from "../src/agent/request";
 import {
   LIGHT_FORMATS,
   actRequest,
@@ -66,6 +67,7 @@ const TOOLS: Array<[string, string[], string[]]> = [
   ["web_crawl", aceptadas(crawlRequest), []],
   ["web_search_exa", aceptadas(searchRequest), []],
   ["web_feedback", aceptadas(feedbackRequest), []],
+  ["web_task_start", aceptadas(taskRequest), []],
 ];
 
 describe("el catálogo MCP contra el esquema real", () => {

@@ -27,6 +27,7 @@ import { billing, parsedBody } from "./billing";
 import { mcp } from "./mcp";
 import { account } from "./account";
 import { feedback } from "./feedback";
+import { agentRoutes } from "./agent/routes";
 import serverManifest from "../server.json";
 import {
   accountForKey,
@@ -56,6 +57,7 @@ import { ENGINE, search } from "./search/exa";
 export { BrowserSession } from "./session/do";
 export { BatchJob } from "./jobs/do";
 export { CrawlJob } from "./jobs/crawl";
+export { AgentTask } from "./agent/do";
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -87,6 +89,9 @@ app.route("/", account);
 // Reporting a bad answer is free: charging for a complaint would mean paying to tell us
 // we are broken.
 app.route("/", feedback);
+
+// Agent tasks: their own auth and their own billing, so they sit outside the product guard.
+app.route("/", agentRoutes);
 
 /**
  * The front page has two audiences on two hosts. The bare domain is where a person lands,

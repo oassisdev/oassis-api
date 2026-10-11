@@ -62,13 +62,15 @@
       // object, on an alarm, and the caller collects it with the jobId.
       { "name": "JOBS", "class_name": "BatchJob" },
       // A crawl is a batch that feeds itself from the links it finds.
-      { "name": "CRAWLS", "class_name": "CrawlJob" }
+      { "name": "CRAWLS", "class_name": "CrawlJob" },
+      { "name": "AGENT_TASKS", "class_name": "AgentTask" }
     ]
   },
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["BrowserSession"] },
     { "tag": "v2", "new_sqlite_classes": ["BatchJob"] },
-    { "tag": "v3", "new_sqlite_classes": ["CrawlJob"] }
+    { "tag": "v3", "new_sqlite_classes": ["CrawlJob"] },
+    { "tag": "v4", "new_sqlite_classes": ["AgentTask"] }
   ],
   // Accounts, API keys, transactions and sessions: identity and money, nothing else.
   "d1_databases": [

@@ -60,7 +60,7 @@ export async function charge(db: D1Database, account: string, c: Charge): Promis
   const res = await db
     .prepare(
       `UPDATE accounts SET balance_micros = balance_micros - ?1
-        WHERE id = ?2 AND active = 1 AND balance_micros >= ?1`,
+        WHERE id = ?2 AND active = 1 AND balance_micros - reserved_micros >= ?1`,
     )
     .bind(c.micros, account)
     .run();

@@ -48,7 +48,7 @@ describe("every documented field can be typed", () => {
 describe("the catalogue", () => {
   it("describes every paid route, on the host it was asked from", () => {
     const spec = openapi(ctx()) as { paths: Record<string, unknown>; servers: { url: string }[] };
-    expect(Object.keys(spec.paths).sort()).toEqual([
+    expect(Object.keys(spec.paths).filter((p) => p.startsWith("/web/v1")).sort()).toEqual([
       "/web/v1/act",
       "/web/v1/crawl",
       "/web/v1/map",
@@ -84,6 +84,7 @@ describe("the catalogue", () => {
       paths: Record<string, { post: { "x-x402": { price: string; payTo: string; network: string } } }>;
     };
     for (const [path, entry] of Object.entries(spec.paths)) {
+      if (!path.startsWith("/web/v1")) continue;
       expect(entry.post["x-x402"].price, path).toMatch(/\$\d/);
       expect(entry.post["x-x402"].payTo, path).toBe("0x23Fc725e8EAa1c58900C6507Ba89be99a6DFc75d");
       expect(entry.post["x-x402"].network, path).toBe("eip155:8453");
@@ -145,5 +146,17 @@ describe("llms.txt", () => {
 
   it("is written in English, like everything a client reads", () => {
     expect(text).not.toMatch(/[áéíóúñ¿¡]|\b(precio|llamada|gratis|cuenta)\b/i);
+  });
+});
+
+describe("agent task paths", () => {
+  it("are documented, bearer-authenticated, and carry no x402 quote", () => {
+    const spec = openapi(ctx()) as { paths: Record<string, any>; components: { securitySchemes: Record<string, unknown> } };
+    const start = spec.paths["https://api.oassis.dev/agent/v1/tasks"];
+    expect(start?.post.operationId).toBe("web_task_start");
+    expect(start?.post.security).toEqual([{ bearerAuth: [] }]);
+    expect(start?.post["x-x402"]).toBeUndefined();
+    expect(spec.components.securitySchemes.bearerAuth).toBeDefined();
+    expect(Object.keys(spec.paths).some((p) => p.endsWith("/agent/v1/tasks/{task_id}/cancel"))).toBe(true);
   });
 });

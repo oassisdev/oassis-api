@@ -48,6 +48,8 @@ import { servedText } from "./landing";
 import { PROMPTS, RESOURCES, freeLine, readResource } from "./mcp-resources";
 import { VERSION } from "./version";
 import { feedbackRequest, storeFeedback } from "./feedback";
+import { cancelTask, getTask, startTask } from "./agent/service";
+import { taskRequest } from "./agent/request";
 import { mapSite } from "./map";
 import type { Env } from "./types";
 import type { Message } from "./session/do";
@@ -245,6 +247,52 @@ const TOOLS = [
     description:
       "Tell us an answer was good or bad. FREE. Use it when a result is wrong — empty markdown, a control map missing a button, data that does not match the page — with the url or the jobId so it can be reproduced. It is the only way we learn that we read a page badly: our logs cannot tell that apart from a page that is simply like that. Reference for the oassis API: https://oassis.dev/openapi.json",
     inputSchema: fichaDe(feedbackRequest),
+  },
+  {
+    name: "web_task_start",
+    annotations: {
+      title: "Start an agent task",
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
+    description:
+      "Starts a research task: a question answered by reading public pages, with sources, progress and cost. Needs an API key with a balance; the budget is reserved first and the unused part is returned when the task ends. Returns a task id: check it with web_task_status.",
+    inputSchema: fichaDe(taskRequest),
+  },
+  {
+    name: "web_task_status",
+    annotations: {
+      title: "Check an agent task",
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+    description: "Returns a task's status, progress, sources, limitations, result and billing. Only your own tasks.",
+    inputSchema: {
+      type: "object",
+      properties: { id: { type: "string", description: "The task id, from web_task_start." } },
+      required: ["id"],
+    },
+  },
+  {
+    name: "web_task_cancel",
+    annotations: {
+      title: "Cancel an agent task",
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+    description:
+      "Stops a task: no new operations start and the unused budget is returned. An operation already running cannot always be stopped remotely; it is charged as it completes. Cancelling a finished task changes nothing.",
+    inputSchema: {
+      type: "object",
+      properties: { id: { type: "string", description: "The task id, from web_task_start." } },
+      required: ["id"],
+    },
   },
   {
     name: "web_session_close",
@@ -468,6 +516,28 @@ async function callTool(
       headers: { "content-type": "application/json" },
     });
     return c.json(toolResult(id, await res.text(), !res.ok));
+  }
+
+  if (name === "web_task_start" || name === "web_task_status" || name === "web_task_cancel") {
+    const who = await callerAccount(c);
+    if (who === "invalid") return c.json(toolResult(id, "Invalid or revoked key.", true));
+    if (!who) {
+      return c.json(toolResult(id, "Agent tasks need an API key with a balance: send `Authorization: Bearer oas_…`.", true));
+    }
+    if (name === "web_task_start") {
+      const r = await startTask(c.env, { account: who, body: args, idempotencyKey: null, baseUrl: c.env.BASE_URL });
+      if (!r.ok) return c.json(toolResult(id, `${r.error.error}: ${r.error.message}`, true));
+      return c.json(toolResult(id, JSON.stringify({ task_id: r.taskId, status: r.status, location: r.location })));
+    }
+    const taskId = String(args.id ?? "");
+    if (name === "web_task_status") {
+      const out = await getTask(c.env, who, taskId);
+      if ("error" in out) return c.json(toolResult(id, `${out.error}: ${out.message}`, true));
+      return c.json(toolResult(id, JSON.stringify(out.body)));
+    }
+    const out = await cancelTask(c.env, who, taskId);
+    if ("error" in out) return c.json(toolResult(id, `${out.error}: ${out.message}`, true));
+    return c.json(toolResult(id, JSON.stringify(out.body)));
   }
 
   /** Reporting a bad answer is free, with or without a key. */

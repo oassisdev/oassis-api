@@ -45,6 +45,9 @@ describe("MCP protocol", () => {
       "web_crawl_status",
       "web_search_exa",
       "web_feedback",
+      "web_task_start",
+      "web_task_status",
+      "web_task_cancel",
       "web_session_close",
     ]);
     for (const t of result.tools) {
@@ -165,6 +168,6 @@ describe("what each tool admits about itself", () => {
       .sort();
     // Acting on a page, opening or closing a session, cancelling a job and leaving feedback
     // all change something. Claiming otherwise would read better and be a lie.
-    expect(readOnly).toEqual(["web_crawl", "web_map", "web_scrape", "web_scrape_batch", "web_search_exa"]);
+    expect(readOnly).toEqual(["web_crawl", "web_map", "web_scrape", "web_scrape_batch", "web_search_exa", "web_task_status"]);
   });
 });

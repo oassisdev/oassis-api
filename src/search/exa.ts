@@ -117,12 +117,46 @@ export async function priceOfSearch(req: SearchRequest): Promise<number> {
 }
 
 /** Runs the search, paying for it. */
-export async function search(env: Env, req: SearchRequest): Promise<SearchOutcome> {
+/**
+ * What a caller lets us pay Exa at most, checked on the 402 before anything is signed. The
+ * network and the asset are checked too: a challenge for another chain or token is refused,
+ * not paid. A challenge we cannot read is refused as well.
+ */
+export interface PaymentGuard {
+  maxMicros: number;
+  network: string;
+  asset: string;
+}
+
+export function assertChallengeWithin(res: Response, guard: PaymentGuard): void {
+  const header = res.headers.get("payment-required");
+  if (!header) throw new Error("the search provider's challenge could not be read, so nothing was paid");
+  let challenge: { accepts?: { amount?: string; network?: string; asset?: string }[] };
+  try {
+    challenge = JSON.parse(atob(header));
+  } catch {
+    throw new Error("the search provider's challenge could not be read, so nothing was paid");
+  }
+  const option = challenge.accepts?.[0];
+  if (!option?.amount || option.network !== guard.network || option.asset?.toLowerCase() !== guard.asset.toLowerCase()) {
+    throw new Error("the search provider asked for another network or asset, so nothing was paid");
+  }
+  if (Number(option.amount) > guard.maxMicros) {
+    throw new Error("the search provider's price is above the amount authorised, so nothing was paid");
+  }
+}
+
+export async function search(env: Env, req: SearchRequest, guard?: PaymentGuard): Promise<SearchOutcome> {
   const paying = walletFor(env);
   if ("error" in paying) throw new Error(`Search is not configured on this deployment: ${paying.error}.`);
 
   const client = registerExactEvmScheme(new x402Client(), { signer: paying.account });
-  const pay = wrapFetchWithPayment(fetch, client);
+  const guarded: typeof fetch = async (input, init) => {
+    const res = await fetch(input, init);
+    if (res.status === 402 && guard) assertChallengeWithin(res, guard);
+    return res;
+  };
+  const pay = wrapFetchWithPayment(guarded, client);
 
   const res = await pay(EXA_SEARCH, {
     method: "POST",

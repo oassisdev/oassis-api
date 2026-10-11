@@ -101,6 +101,8 @@ export interface Env {
   /** Crawls: a batch that feeds itself from the links it finds. */
   CRAWLS: DurableObjectNamespace;
   BROWSER: BrowserBinding;
+  /** Agent tasks: one object per task, which runs its steps from alarms. */
+  AGENT_TASKS: DurableObjectNamespace;
   /** Accounts, API keys, transactions and sessions. Identity and money, nothing else. */
   BILLING: D1Database;
   /** Render cache. Optional: without it everything is rendered fresh. */
@@ -111,12 +113,17 @@ export interface Env {
       files: { name: string; blob: Blob }[],
       options?: { conversionOptions?: Record<string, unknown> },
     ): Promise<unknown>;
+
+    /** Workers AI text models. Used by agent tasks for planning and synthesis. */
+    run(model: string, inputs: Record<string, unknown>): Promise<unknown>;
   };
   /** Address that receives x402 payments. Without it, that gate is closed. */
   X402_PAY_TO?: string;
   /** `base` (the default) or `base-sepolia` for testing. */
   X402_NETWORK?: string;
   X402_FACILITATOR_URL?: string;
+  /** Model for agent tasks. Defaults to the one in agent/rates.ts. */
+  AGENT_MODEL?: string;
   /**
    * Private key of the wallet that pays for search, hex with `0x`. Without it the search
    * route says so instead of failing mid-call. Keep it funded with little: it is a hot

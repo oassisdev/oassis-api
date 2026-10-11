@@ -164,6 +164,81 @@ and under the organization [github.com/oassisdev](https://github.com/oassisdev).
 
 ---
 
+## Agent tasks
+
+Ask a question in plain words and get a structured answer with its sources. The agent plans
+its own steps: it decides what to search, which pages to read, and when it has enough.
+
+Tasks need an API key with a balance. They are not free, even where the single tools are.
+
+```bash
+curl -X POST https://api.oassis.dev/agent/v1/tasks \
+  -H 'authorization: Bearer oas_…' \
+  -H 'content-type: application/json' \
+  -H 'idempotency-key: compare-hosts-1' \
+  -d '{"task":"Compare pricing and limits of three hosting providers for AI agents",
+       "mode":"research","urls":[],
+       "limits":{"max_cost_usd":0.10,"max_duration_seconds":180,"max_steps":10}}'
+```
+
+The answer is `202 Accepted` with a `Location` header. Read it until it is final:
+
+```bash
+curl https://api.oassis.dev/agent/v1/tasks/TASK_ID -H 'authorization: Bearer oas_…'
+```
+
+Statuses: `queued`, `running`, `completed`, `partial`, `failed`, `cancelled`. A task is
+`completed` only when it has findings that cite pages it really read, nothing is left open and
+no limit was hit. Otherwise it is `partial`, with the reason and what is missing. A task with no
+page read at all is `failed`.
+
+Cancel with `POST /agent/v1/tasks/TASK_ID/cancel`. Cancelling a finished task changes nothing.
+
+**Budget.** `max_cost_usd` is reserved from the balance before the task starts. What the task
+spends is charged at the end, and the rest of the reserve is returned in the same transaction.
+A request that would exceed the balance is refused with `402` and nothing is reserved.
+
+**Prices.** Each client price is at least twice what the work costs us:
+
+| Step | Charged |
+| --- | --- |
+| Planning call (model) | $0.003 |
+| Final answer (model) | $0.008 |
+| Page read (markdown) | $0.001 |
+| Search | twice what Exa charged us, every time, including empty or uncertain results |
+
+A planning call or an answer that does not come back in a usable form is not charged. A page that
+cannot be read is not charged either.
+
+**Idempotency.** `Idempotency-Key` is per account. The same key with the same request returns the
+same task. The same key with a different request is refused with `409`. Keys are kept with their
+task. MCP has no idempotency key: retry tasks over HTTP.
+
+**Uncertain operations.** A payment to Exa that may have gone through, but whose outcome is unknown
+(for example after a crash), is charged at the most it could have cost. It is never retried, and the
+task ends as `partial`, or `failed` when no page had been read, and says so.
+
+**Sources and evidence.** Each source has an id, the URL, the time it was read, and the fragment of
+the page the answer may use. A page is cut at 4,000 characters and the cut is marked. The model
+sees at most 12,000 characters of evidence in one call. Page content is treated as data: it cannot
+change the task, call tools or authorise spending. A finding that cites a source the task did not
+read is removed. The task reports how many were removed as `findings_removed`. The server checks the citations, not the wording: a finding can cite a real page and still add a conclusion the page does not state. Read the cited evidence before you rely on a finding.
+
+**MCP.** `web_task_start`, `web_task_status` and `web_task_cancel` run the same code as the HTTP
+endpoints.
+
+**Limits of version 1.** Tasks research public pages only. They do not submit forms, buy, book or
+send anything. Crawls, browser sessions and actions are not part of tasks yet.
+
+**Network safety.** Urls are checked before they are read: only `http` and `https`, no credentials,
+and no obvious local or private hosts or addresses. This is a filter, not a full protection against
+server-side request forgery: a public name can resolve to a private address, and redirects are
+followed. Do not rely on it to keep an agent away from your internal network.
+
+**Model.** Planning and answers run on Workers AI. The default model is
+`@cf/meta/llama-3.3-70b-instruct-fp8-fast`; set `AGENT_MODEL` to change it. The rates live in
+`src/agent/rates.ts`.
+
 ## Run your own copy
 
 ```bash

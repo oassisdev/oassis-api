@@ -84,13 +84,95 @@ function properties(request: Record<string, string> | undefined): Record<string,
 }
 
 /** The OpenAPI document, built for whoever is asking: the host decides the paths. */
+/**
+ * Agent tasks are paid from an account balance, not per request over x402, so they carry no
+ * x-x402 quote. They need an API key, and the reserve is stated where a caller reads the price.
+ */
+function agentTaskPaths(base: string): Record<string, unknown> {
+  const bearer = [{ bearerAuth: [] }];
+  const unauthorized = { "401": { description: "No key, or an invalid or revoked key." } };
+  const notFound = { "404": { description: "No task with that id belongs to this account." } };
+  return {
+    [`${base}/agent/v1/tasks`]: {
+      post: {
+        summary: "Start a research task",
+        description:
+          "Answers a question by reading public pages, with sources, progress and cost. The budget in limits.max_cost_usd is reserved before the task starts; the unused part is returned when it ends. Requires an API key with a balance. Send Idempotency-Key to retry safely.",
+        operationId: "web_task_start",
+        security: bearer,
+        parameters: [
+          { name: "Idempotency-Key", in: "header", required: false, schema: { type: "string", maxLength: 200 }, description: "Same key and same request return the same task. Same key with a different request is refused with 409." },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["task"],
+                additionalProperties: false,
+                properties: {
+                  task: { type: "string", minLength: 10, maxLength: 2000, description: "What to find out." },
+                  mode: { type: "string", enum: ["research"], default: "research" },
+                  urls: { type: "array", maxItems: 5, items: { type: "string", format: "uri" }, default: [] },
+                  limits: {
+                    type: "object",
+                    additionalProperties: false,
+                    properties: {
+                      max_cost_usd: { type: "number", minimum: 0.01, maximum: 1, default: 0.1 },
+                      max_duration_seconds: { type: "integer", minimum: 30, maximum: 900, default: 180 },
+                      max_steps: { type: "integer", minimum: 1, maximum: 20, default: 10 },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "202": { description: "Accepted. The Location header points at the task. Body: task_id, status, location, replayed." },
+          "400": { description: "The request does not match the contract. Unknown fields and unsupported modes are refused." },
+          "402": { description: "The available balance does not cover the reserve." },
+          "409": { description: "The Idempotency-Key was used with a different request." },
+          ...unauthorized,
+        },
+        "x-mcp-tool": "web_task_start",
+      },
+    },
+    [`${base}/agent/v1/tasks/{task_id}`]: {
+      get: {
+        summary: "Read a task",
+        description:
+          "Status, progress, operations, sources with the evidence used, limitations, the result when there is one, and billing: reserved, spent, released and settlement.",
+        operationId: "web_task_status",
+        security: bearer,
+        parameters: [{ name: "task_id", in: "path", required: true, schema: { type: "string" } }],
+        responses: { "200": { description: "The task." }, ...notFound, ...unauthorized },
+        "x-mcp-tool": "web_task_status",
+      },
+    },
+    [`${base}/agent/v1/tasks/{task_id}/cancel`]: {
+      post: {
+        summary: "Cancel a task",
+        description:
+          "Stops new operations and returns the unused budget. An operation already running cannot always be stopped remotely: it is charged as it completes. Cancelling a finished task changes nothing.",
+        operationId: "web_task_cancel",
+        security: bearer,
+        parameters: [{ name: "task_id", in: "path", required: true, schema: { type: "string" } }],
+        responses: { "202": { description: "Cancellation requested, or the task as it already was." }, ...notFound, ...unauthorized },
+        "x-mcp-tool": "web_task_cancel",
+      },
+    },
+  };
+}
+
 export function openapi(c: Context<{ Bindings: Env }>): Record<string, unknown> {
   const base = origin(c);
   const family = prefixForHost(c);
   const payTo = c.env.X402_PAY_TO;
   const network = (c.env.X402_NETWORK ?? "base") === "base" ? "eip155:8453" : "eip155:84532";
 
-  const paths: Record<string, unknown> = {};
+  const paths: Record<string, unknown> = { ...agentTaskPaths(base) };
   for (const { path, build, tool, summary, from } of PAID) {
     const described = build(c) as Doc;
     /** Some routes document a family of paths rather than one, and carry no single line. */
@@ -150,6 +232,7 @@ export function openapi(c: Context<{ Bindings: Env }>): Record<string, unknown> 
       "x-logo": { url: `${origin(c)}/icon-512.png`, altText: "oassis" },
     },
     servers: [{ url: base }],
+    components: { securitySchemes: { bearerAuth: { type: "http", scheme: "bearer", description: "An API key: Authorization: Bearer oas_…" } } },
     /** Where a person goes. The rest of this document is for whatever is reading it. */
     externalDocs: { description: "oassis", url: SITE },
     paths,
@@ -190,15 +273,29 @@ export function llmsTxt(c: Context<{ Bindings: Env }>): string {
   ];
 
   for (const [path, op] of Object.entries(spec.paths)) {
+    const post = (op as { post?: { description: string; "x-x402"?: { price: string }; "x-mcp-tool": string } }).post;
+    if (!post?.["x-x402"]) continue;
     lines.push(`### POST ${path}`);
     lines.push("");
-    lines.push(op.post.description);
+    lines.push(post.description);
     lines.push("");
-    lines.push(`- Price: ${op.post["x-x402"].price}`);
-    lines.push(`- MCP tool: \`${op.post["x-mcp-tool"]}\``);
+    lines.push(`- Price: ${post["x-x402"].price}`);
+    lines.push(`- MCP tool: \`${post["x-mcp-tool"]}\``);
     lines.push(`- What it expects: GET ${path} (free)`);
     lines.push("");
   }
+
+  lines.push("## Agent tasks");
+  lines.push("");
+  lines.push(
+    "A research task answers a question from public pages, with sources, progress and cost. Tasks need an API key with a balance: the budget is reserved when the task starts, and the unused part is returned when it ends.",
+  );
+  lines.push("");
+  lines.push(`- POST ${base}/agent/v1/tasks: start a task (202, with a Location header)`);
+  lines.push(`- GET ${base}/agent/v1/tasks/{task_id}: read status, sources, result and billing`);
+  lines.push(`- POST ${base}/agent/v1/tasks/{task_id}/cancel: stop a task and return the unused budget`);
+  lines.push("- MCP tools: web_task_start, web_task_status, web_task_cancel");
+  lines.push("");
 
   lines.push("## MCP");
   lines.push("");
