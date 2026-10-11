@@ -17,6 +17,7 @@ describe("task request", () => {
 
   it("keeps every limit inside its range", () => {
     expect(taskRequest.safeParse({ task: "Compare three hosting providers", limits: { max_cost_usd: 5 } }).success).toBe(false);
+    expect(taskRequest.safeParse({ task: "Compare three hosting providers", limits: { max_cost_usd: 0.01 } }).success).toBe(false);
     expect(taskRequest.safeParse({ task: "Compare three hosting providers", limits: { max_steps: 99 } }).success).toBe(false);
     expect(taskRequest.safeParse({ task: "short" }).success).toBe(false);
   });
@@ -33,7 +34,8 @@ describe("url checks", () => {
     expect(checkPublicUrl("http://10.0.0.5/")).toBe("private_address");
     expect(checkPublicUrl("http://192.168.1.1/")).toBe("private_address");
     expect(checkPublicUrl("http://169.254.169.254/latest")).toBe("private_address");
-    expect(checkPublicUrl("http://[::1]/")).toBe("private_address");
+    expect(checkPublicUrl("http://[::1]/")).toBe("ipv6_literal");
+    expect(checkPublicUrl("http://[::ffff:127.0.0.1]/")).toBe("ipv6_literal");
     expect(checkPublicUrl("https://user:pw@example.com/")).toBe("credentials_in_url");
     expect(checkPublicUrl("file:///etc/passwd")).toBe("unsupported_scheme");
     expect(checkPublicUrl("not a url")).toBe("invalid_url");

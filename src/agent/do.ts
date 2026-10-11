@@ -16,6 +16,16 @@ import { planNextStep, synthesize } from "./model";
 import { DEFAULT_MODEL } from "./rates";
 
 const STEP_GAP_MS = 250;
+/** One model call may not hold a task longer than this. A call that runs past it is treated as no answer. */
+const MODEL_TIMEOUT_MS = 30_000;
+
+function bounded<T>(work: Promise<T>, fallback: T): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const limit = new Promise<T>((resolve) => {
+    timer = setTimeout(() => resolve(fallback), MODEL_TIMEOUT_MS);
+  });
+  return Promise.race([work, limit]).finally(() => clearTimeout(timer));
+}
 
 export class AgentTask extends DurableObject<Env> {
   async fetch(request: Request): Promise<Response> {
@@ -79,14 +89,23 @@ export class AgentTask extends DurableObject<Env> {
     return {
       now: () => Date.now(),
       checkpoint: async (doc) => this.save(taskId, doc),
-      plan: (doc) => planNextStep(env.AI, doc, model),
+      plan: (doc) => bounded(planNextStep(env.AI, doc, model), null),
+      refreshCancel: async (doc) => {
+        const row = await env.BILLING.prepare(`SELECT cancel_requested FROM agent_tasks WHERE id = ?1`)
+          .bind(taskId)
+          .first<{ cancel_requested: number }>();
+        if (row?.cancel_requested) doc.cancel_requested = true;
+      },
       search: async (query, maxExaMicros) => {
+        let quoted: number | null = null;
         try {
-          const out = await search(env, { query, limit: 5 }, { maxMicros: maxExaMicros, network, asset });
+          const out = await search(env, { query, limit: 5 }, { maxMicros: maxExaMicros, network, asset, onQuote: (m) => (quoted = m) });
           return { ok: true, results: out.results, paidMicros: out.paidMicros };
         } catch (e) {
           const message = e instanceof Error ? e.message : String(e);
-          return { ok: false, error: message, ...searchFailure(message, maxExaMicros) };
+          const failure = searchFailure(message, maxExaMicros);
+          // When the provider's price was read before the failure, that price is what may have been paid.
+          return { ok: false, error: message, ...failure, paidMicros: failure.certain ? 0 : (quoted ?? maxExaMicros) };
         }
       },
       read: async (url) => {
@@ -99,7 +118,7 @@ export class AgentTask extends DurableObject<Env> {
           return { ok: false, error: e instanceof Error ? e.message : String(e) };
         }
       },
-      synthesize: (doc) => synthesize(env.AI, doc, model),
+      synthesize: (doc) => bounded(synthesize(env.AI, doc, model), null),
     };
   }
 }

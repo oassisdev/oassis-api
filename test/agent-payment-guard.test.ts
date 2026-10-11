@@ -25,6 +25,15 @@ describe("the search payment guard", () => {
     expect(() => assertChallengeWithin(challenge({ network: "eip155:1" }), guard)).toThrow(/nothing was paid/);
     expect(() => assertChallengeWithin(challenge({ asset: "0x0000000000000000000000000000000000000001" }), guard)).toThrow(/nothing was paid/);
   });
+  it("refuses a price that is not a whole number, rather than letting NaN pass the limit", () => {
+    expect(() => assertChallengeWithin(challenge({ amount: "not-a-number" }), guard)).toThrow(/nothing was paid/);
+    expect(() => assertChallengeWithin(challenge({ amount: "1e9" }), guard)).toThrow(/nothing was paid/);
+  });
+  it("reports the quoted price before refusing it", () => {
+    let quoted = 0;
+    expect(() => assertChallengeWithin(challenge({ amount: "10001" }), { ...guard, onQuote: (m) => (quoted = m) })).toThrow();
+    expect(quoted).toBe(10_001);
+  });
   it("refuses a challenge it cannot read: failing closed", () => {
     expect(() => assertChallengeWithin(challenge({}, false), guard)).toThrow(/nothing was paid/);
   });

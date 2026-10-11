@@ -11,6 +11,12 @@ import { cancelTask, getTask, startTask } from "./service";
 
 export const agentRoutes = new Hono<{ Bindings: Env }>();
 
+/** Task answers are private to their account: nothing about them may be stored by a cache. */
+agentRoutes.use("*", async (c, next) => {
+  await next();
+  c.header("cache-control", "no-store");
+});
+
 const bearer = (header: string | undefined): string => (header ?? "").replace(/^Bearer\s+/i, "").trim();
 
 async function requireAccount(c: { req: { header(n: string): string | undefined }; env: Env; json: (b: unknown, s: number) => Response }): Promise<{ id: string } | Response> {

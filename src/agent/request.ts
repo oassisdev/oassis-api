@@ -9,7 +9,8 @@ export const TASK_MODES = ["research"] as const;
 
 export const DEFAULT_LIMITS = { max_cost_usd: 0.1, max_duration_seconds: 180, max_steps: 10 } as const;
 export const MAX_LIMITS = { max_cost_usd: 1, max_duration_seconds: 900, max_steps: 20 } as const;
-export const MIN_COST_USD = 0.01;
+/** Smaller budgets cannot pay for a planning call and an answer: the reserve for both is $0.012. */
+export const MIN_COST_USD = 0.02;
 export const MAX_URLS = 5;
 
 export const taskRequest = z
@@ -63,10 +64,7 @@ export function checkPublicUrl(raw: string): string | null {
       (a === 100 && b >= 64 && b <= 127);
     if (private_) return "private_address";
   }
-  if (host.includes(":")) {
-    if (host === "::1" || host.startsWith("fc") || host.startsWith("fd") || host.startsWith("fe80") || host === "::") {
-      return "private_address";
-    }
-  }
+  // IPv6 literals are refused outright: mapped and embedded IPv4 forms are too easy to get wrong.
+  if (host.includes(":")) return "ipv6_literal";
   return null;
 }

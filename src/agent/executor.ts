@@ -72,6 +72,8 @@ export interface Deps {
   search(query: string, maxExaMicros: number): Promise<SearchOutcome>;
   read(url: string): Promise<{ ok: true; markdown: string } | { ok: false; error: string }>;
   synthesize(doc: TaskDocument): Promise<TaskResult | null>;
+  /** Re-reads the cancel request from storage, so a cancel that arrives during a step is seen before the next paid call. */
+  refreshCancel(doc: TaskDocument): Promise<void>;
 }
 
 const MAX_INVALID_PLANS = 3;
@@ -109,7 +111,14 @@ export async function runStep(doc: TaskDocument, deps: Deps): Promise<boolean> {
   doc.status = "running";
 
   if (doc.inflight) {
+    const op = doc.inflight.op;
     recoverUncertain(doc);
+    // An interrupted answer is never written again: its cost is already owed, and its outcome is unknown.
+    if (op === "synthesis") {
+      doc.status = doc.sources.length > 0 ? "partial" : "failed";
+      doc.error_code = "synthesis_outcome_unknown";
+      return true;
+    }
     return finish(doc, deps);
   }
 
@@ -136,6 +145,8 @@ export async function runStep(doc: TaskDocument, deps: Deps): Promise<boolean> {
   // A planning call that gave no usable step is not billed: a failed call costs nothing.
   charge(doc, "plan", plan ? CLIENT.planMicros : 0, step, plan !== null, plan ? plan.action : "no valid plan");
   doc.inflight = null;
+  await deps.refreshCancel(doc);
+  if (doc.cancel_requested) return finish(doc, deps, "cancelled");
 
   if (plan === null) {
     doc.invalid_plans += 1;
@@ -216,6 +227,10 @@ export async function runStep(doc: TaskDocument, deps: Deps): Promise<boolean> {
 }
 
 async function finish(doc: TaskDocument, deps: Deps, forced?: "cancelled"): Promise<true> {
+  if (!forced) {
+    await deps.refreshCancel(doc);
+    if (doc.cancel_requested) forced = "cancelled";
+  }
   if (forced === "cancelled") {
     doc.status = "cancelled";
     doc.missing.push("cancelled_by_caller");

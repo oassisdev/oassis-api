@@ -126,6 +126,8 @@ export interface PaymentGuard {
   maxMicros: number;
   network: string;
   asset: string;
+  /** Told the price the provider asked for, before anything is signed. */
+  onQuote?: (micros: number) => void;
 }
 
 export function assertChallengeWithin(res: Response, guard: PaymentGuard): void {
@@ -141,7 +143,11 @@ export function assertChallengeWithin(res: Response, guard: PaymentGuard): void 
   if (!option?.amount || option.network !== guard.network || option.asset?.toLowerCase() !== guard.asset.toLowerCase()) {
     throw new Error("the search provider asked for another network or asset, so nothing was paid");
   }
-  if (Number(option.amount) > guard.maxMicros) {
+  if (!/^\d+$/.test(option.amount)) throw new Error("the search provider's price is not a whole amount, so nothing was paid");
+  const amount = Number(option.amount);
+  if (!Number.isSafeInteger(amount)) throw new Error("the search provider's price is not a safe amount, so nothing was paid");
+  guard.onQuote?.(amount);
+  if (amount > guard.maxMicros) {
     throw new Error("the search provider's price is above the amount authorised, so nothing was paid");
   }
 }

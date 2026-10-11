@@ -198,7 +198,7 @@ Cancel with `POST /agent/v1/tasks/TASK_ID/cancel`. Cancelling a finished task ch
 spends is charged at the end, and the rest of the reserve is returned in the same transaction.
 A request that would exceed the balance is refused with `402` and nothing is reserved.
 
-**Prices.** Each client price is at least twice what the work costs us:
+**Prices.** Each client price is at least twice what the work costs us (a 100% markup, which is a 50% gross margin):
 
 | Step | Charged |
 | --- | --- |
@@ -208,7 +208,8 @@ A request that would exceed the balance is refused with `402` and nothing is res
 | Search | twice what Exa charged us, every time, including empty or uncertain results |
 
 A planning call or an answer that does not come back in a usable form is not charged. A page that
-cannot be read is not charged either.
+cannot be read is not charged either. Each model call is capped (planning at 256 output tokens, the answer at
+1,500) and must return within 30 seconds; a call that runs past that counts as no answer.
 
 **Idempotency.** `Idempotency-Key` is per account. The same key with the same request returns the
 same task. The same key with a different request is refused with `409`. Keys are kept with their
@@ -231,7 +232,7 @@ endpoints.
 send anything. Crawls, browser sessions and actions are not part of tasks yet.
 
 **Network safety.** Urls are checked before they are read: only `http` and `https`, no credentials,
-and no obvious local or private hosts or addresses. This is a filter, not a full protection against
+no obvious local or private hosts or addresses, and no IPv6 literals. This is a filter, not a full protection against
 server-side request forgery: a public name can resolve to a private address, and redirects are
 followed. Do not rely on it to keep an agent away from your internal network.
 

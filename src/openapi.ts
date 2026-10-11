@@ -88,12 +88,12 @@ function properties(request: Record<string, string> | undefined): Record<string,
  * Agent tasks are paid from an account balance, not per request over x402, so they carry no
  * x-x402 quote. They need an API key, and the reserve is stated where a caller reads the price.
  */
-function agentTaskPaths(base: string): Record<string, unknown> {
+function agentTaskPaths(): Record<string, unknown> {
   const bearer = [{ bearerAuth: [] }];
   const unauthorized = { "401": { description: "No key, or an invalid or revoked key." } };
   const notFound = { "404": { description: "No task with that id belongs to this account." } };
   return {
-    [`${base}/agent/v1/tasks`]: {
+    ["/agent/v1/tasks"]: {
       post: {
         summary: "Start a research task",
         description:
@@ -119,7 +119,7 @@ function agentTaskPaths(base: string): Record<string, unknown> {
                     type: "object",
                     additionalProperties: false,
                     properties: {
-                      max_cost_usd: { type: "number", minimum: 0.01, maximum: 1, default: 0.1 },
+                      max_cost_usd: { type: "number", minimum: 0.02, maximum: 1, default: 0.1 },
                       max_duration_seconds: { type: "integer", minimum: 30, maximum: 900, default: 180 },
                       max_steps: { type: "integer", minimum: 1, maximum: 20, default: 10 },
                     },
@@ -139,7 +139,7 @@ function agentTaskPaths(base: string): Record<string, unknown> {
         "x-mcp-tool": "web_task_start",
       },
     },
-    [`${base}/agent/v1/tasks/{task_id}`]: {
+    ["/agent/v1/tasks/{task_id}"]: {
       get: {
         summary: "Read a task",
         description:
@@ -151,7 +151,7 @@ function agentTaskPaths(base: string): Record<string, unknown> {
         "x-mcp-tool": "web_task_status",
       },
     },
-    [`${base}/agent/v1/tasks/{task_id}/cancel`]: {
+    ["/agent/v1/tasks/{task_id}/cancel"]: {
       post: {
         summary: "Cancel a task",
         description:
@@ -159,7 +159,12 @@ function agentTaskPaths(base: string): Record<string, unknown> {
         operationId: "web_task_cancel",
         security: bearer,
         parameters: [{ name: "task_id", in: "path", required: true, schema: { type: "string" } }],
-        responses: { "202": { description: "Cancellation requested, or the task as it already was." }, ...notFound, ...unauthorized },
+        responses: {
+          "202": { description: "Cancellation requested. The body is the task as it stands." },
+          "200": { description: "The task had already finished: nothing changed. The body is the task." },
+          ...notFound,
+          ...unauthorized,
+        },
         "x-mcp-tool": "web_task_cancel",
       },
     },
@@ -172,7 +177,7 @@ export function openapi(c: Context<{ Bindings: Env }>): Record<string, unknown> 
   const payTo = c.env.X402_PAY_TO;
   const network = (c.env.X402_NETWORK ?? "base") === "base" ? "eip155:8453" : "eip155:84532";
 
-  const paths: Record<string, unknown> = { ...agentTaskPaths(base) };
+  const paths: Record<string, unknown> = { ...agentTaskPaths() };
   for (const { path, build, tool, summary, from } of PAID) {
     const described = build(c) as Doc;
     /** Some routes document a family of paths rather than one, and carry no single line. */

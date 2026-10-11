@@ -17,7 +17,7 @@ import { scrapePrice } from "../billing/prices";
 /** Model used for planning and synthesis. Overridable per deployment with AGENT_MODEL. */
 export const DEFAULT_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 
-/** Client price is at least this multiple of the internal cost. 2 = a 100% margin. */
+/** Client price is at least this multiple of the internal cost: 2 = a 100% markup, which is a 50% gross margin. */
 export const MIN_MARGIN = 2;
 
 export const INTERNAL = {

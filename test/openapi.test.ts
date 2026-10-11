@@ -152,7 +152,7 @@ describe("llms.txt", () => {
 describe("agent task paths", () => {
   it("are documented, bearer-authenticated, and carry no x402 quote", () => {
     const spec = openapi(ctx()) as { paths: Record<string, any>; components: { securitySchemes: Record<string, unknown> } };
-    const start = spec.paths["https://api.oassis.dev/agent/v1/tasks"];
+    const start = spec.paths["/agent/v1/tasks"];
     expect(start?.post.operationId).toBe("web_task_start");
     expect(start?.post.security).toEqual([{ bearerAuth: [] }]);
     expect(start?.post["x-x402"]).toBeUndefined();

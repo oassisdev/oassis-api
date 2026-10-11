@@ -42,6 +42,7 @@ function world(opts: {
   const deps: Deps = {
     now: opts.clock ?? (() => 1_000),
     checkpoint: async () => {},
+    refreshCancel: async () => {},
     plan: async () => (plans.length ? plans.shift()! : { action: "finish", reason: "done" }),
     search: async (_q, maxExa): Promise<SearchOutcome> => {
       if (opts.searchFails === "certain") return { ok: false, error: "nothing was paid", certain: true, paidMicros: 0 };
@@ -221,6 +222,36 @@ describe("search failures are classified before anything is charged", () => {
   });
   it("owes the most it could have cost when the provider failed after a payment may have happened", () => {
     expect(searchFailure("Exa answered HTTP 500.", 7_000)).toEqual({ certain: false, paidMicros: 7_000 });
+  });
+});
+
+describe("cancellation during a step", () => {
+  it("a cancel that arrives while planning stops the step before any paid search", async () => {
+    let searched = 0;
+    const { deps } = world({ plans: [{ action: "search", query: "q", reason: "x" }] });
+    const d = doc();
+    const base = { ...deps, search: async () => { searched += 1; return { ok: true as const, results: [], paidMicros: 7_000 }; }, refreshCancel: async (doc: TaskDocument) => { doc.cancel_requested = true; } };
+    await run(d, base);
+    expect(searched).toBe(0);
+    expect(d.status).toBe("cancelled");
+  });
+});
+
+describe("an interrupted answer", () => {
+  it("is not written a second time after a restart", async () => {
+    let calls = 0;
+    const { deps } = world({ plans: [] });
+    const d = doc({
+      sources: [{ id: "s1", url: "https://a.example/pricing", retrieved_at: "t", evidence: "e", truncated: false }],
+      inflight: { op: "synthesis", micros: 8_000, detail: "final answer" },
+      spent_micros: 0,
+    });
+    const counted = { ...deps, synthesize: async () => { calls += 1; return null; } };
+    expect(await runStep(d, counted)).toBe(true);
+    expect(calls).toBe(0);
+    expect(d.spent_micros).toBe(8_000);
+    expect(d.status).toBe("partial");
+    expect(d.error_code).toBe("synthesis_outcome_unknown");
   });
 });
 

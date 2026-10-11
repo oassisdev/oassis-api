@@ -12,6 +12,10 @@ import { evidenceContext, type Plan, type TaskDocument } from "./executor";
 
 export type Ai = { run(model: string, inputs: Record<string, unknown>): Promise<unknown> };
 
+/** Caps on what one call may generate. The limits are part of what a call costs us. */
+const PLAN_MAX_TOKENS = 256;
+const ANSWER_MAX_TOKENS = 1_500;
+
 const planSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("search"), query: z.string().trim().min(3).max(200), reason: z.string().max(300) }),
   z.object({ action: z.literal("read"), url: z.string().url().max(500), reason: z.string().max(300) }),
@@ -66,9 +70,9 @@ function extractJson(raw: unknown): unknown {
   return null;
 }
 
-async function askOnce<T>(ai: Ai, model: string, messages: { role: string; content: string }[], schema: object, parse: (v: unknown) => T | null): Promise<T | null> {
+async function askOnce<T>(ai: Ai, model: string, messages: { role: string; content: string }[], schema: object, parse: (v: unknown) => T | null, maxTokens: number): Promise<T | null> {
   try {
-    const raw = await ai.run(model, { messages, response_format: { type: "json_schema", json_schema: schema } });
+    const raw = await ai.run(model, { messages, max_tokens: maxTokens, response_format: { type: "json_schema", json_schema: schema } });
     return parse(extractJson(raw));
   } catch {
     return null;
@@ -98,7 +102,7 @@ export async function planNextStep(ai: Ai, doc: TaskDocument, model = DEFAULT_MO
     const plan = await askOnce(ai, model, messages, planJsonSchema, (v) => {
       const p = planSchema.safeParse(normalizePlan(v));
       return p.success ? (p.data as Plan) : null;
-    });
+    }, PLAN_MAX_TOKENS);
     if (plan) return plan;
   }
   return null;
@@ -120,7 +124,7 @@ export async function synthesize(ai: Ai, doc: TaskDocument, model = DEFAULT_MODE
     const result = await askOnce(ai, model, messages, resultJsonSchema, (v) => {
       const p = resultSchema.safeParse(v);
       return p.success ? p.data : null;
-    });
+    }, ANSWER_MAX_TOKENS);
     if (result) return result;
   }
   return null;
