@@ -82,7 +82,7 @@ describe("model replies", () => {
 
   it("rejects a synthesis that does not match the contract", async () => {
     const bad = { response: { summary: "s", findings: [{ claim: "x" }], missing: [] } };
-    expect(await synthesize(fakeAi([bad, bad]), { ...doc, sources: [] } as unknown as TaskDocument)).toBeNull();
+    expect(await synthesize(fakeAi([bad, bad]), { ...doc, sources: [] } as unknown as TaskDocument)).toEqual({ refusal: "schema_mismatch" });
   });
 });
 

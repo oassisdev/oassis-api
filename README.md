@@ -110,6 +110,9 @@ Over HTTP each one is paid. Each one is served at `api.oassis.dev/web/v1/…` an
 | GET | `/web/v1/crawl/:id` | Status and results of a crawl | `web_crawl_status` | Free |
 | POST | `/web/v1/search` | Web search with Exa's index | `web_search_exa` | What Exa charges (≈ $0.007) |
 | POST | `/web/v1/feedback` | Report a result that was wrong | `web_feedback` | Free |
+| POST | `/agent/v1/tasks` | Start a research task (API key and balance) | `web_task_start` | $0.002 + steps |
+| GET | `/agent/v1/tasks/{id}` | Status, progress, sources, result and billing | `web_task_status` | Free |
+| POST | `/agent/v1/tasks/{id}/cancel` | Stop a task and return the unused budget | `web_task_cancel` | Free |
 
 Over MCP, every tool in this table is free except `web_search_exa`. Any `GET` on a route returns, for free, the fields it expects and what it costs.
 
