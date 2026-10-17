@@ -47,9 +47,9 @@ describe("which urls belong to the map", () => {
 describe("map price", () => {
   it("the payable floor without the page, one render with it", () => {
     expect(mapPrice(false)).toBe(MIN_CHARGE);
-    expect(mapPrice(true)).toBe(1_500);
+    expect(mapPrice(true)).toBe(3_000);
     expect(priceOfRequest("map", { includePage: false } as never)).toBe(MIN_CHARGE);
-    expect(priceOfRequest("map", {} as never)).toBe(1_500);
+    expect(priceOfRequest("map", {} as never)).toBe(3_000);
   });
 });
 
@@ -74,16 +74,16 @@ describe("crawl", () => {
 
   it("a page always includes the links, because that is how it finds the next one", () => {
     // markdown + links, not markdown alone.
-    expect(crawlPagePrice(["markdown"])).toBe(2_000);
+    expect(crawlPagePrice(["markdown"])).toBe(4_000);
     // Asking for links explicitly does not pay for them twice.
-    expect(crawlPagePrice(["markdown", "links"])).toBe(2_000);
-    expect(crawlPagePrice(["links"])).toBe(1_000);
+    expect(crawlPagePrice(["markdown", "links"])).toBe(4_000);
+    expect(crawlPagePrice(["links"])).toBe(2_000);
   });
 
   it("is charged up front for every page it is allowed to read", () => {
-    expect(crawlPrice(6, ["markdown"])).toBe(12_000);
-    expect(priceOfRequest("crawl", { limit: 6, formats: ["markdown"] } as never)).toBe(12_000);
+    expect(crawlPrice(6, ["markdown"])).toBe(24_000);
+    expect(priceOfRequest("crawl", { limit: 6, formats: ["markdown"] } as never)).toBe(24_000);
     // No limit means the default of 25.
-    expect(priceOfRequest("crawl", { formats: ["markdown"] } as never)).toBe(50_000);
+    expect(priceOfRequest("crawl", { formats: ["markdown"] } as never)).toBe(100_000);
   });
 });

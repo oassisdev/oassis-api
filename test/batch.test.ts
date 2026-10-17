@@ -39,9 +39,9 @@ describe("batch validation", () => {
 
 describe("batch price", () => {
   it("is one scrape per url, charged up front", () => {
-    expect(batchPrice(3, ["markdown"])).toBe(3 * 1_000);
-    expect(batchPrice(3, ["markdown", "controls"])).toBe(3 * 2_000);
-    expect(priceOfRequest("batch", { urls, formats: ["markdown"] })).toBe(3_000);
+    expect(batchPrice(3, ["markdown"])).toBe(3 * 2_000);
+    expect(batchPrice(3, ["markdown", "controls"])).toBe(3 * 4_000);
+    expect(priceOfRequest("batch", { urls, formats: ["markdown"] })).toBe(6_000);
   });
 
   it("an empty list costs nothing, so a malformed body cannot be billed", () => {
@@ -50,6 +50,6 @@ describe("batch price", () => {
 
   it("what the cache saves per url is the difference the job refunds", () => {
     // A url served from the cache was charged a full render and cost none.
-    expect(scrapePrice(["markdown"]) - PRICES.cacheHit).toBe(800);
+    expect(scrapePrice(["markdown"]) - PRICES.cacheHit).toBe(1800);
   });
 });

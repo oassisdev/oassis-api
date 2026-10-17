@@ -89,7 +89,7 @@ Base; the facilitator pays the gas.
 Step 3: repeat the **same request** with the payment proof in the `PAYMENT-SIGNATURE` header.
 The response comes back with `PAYMENT-RESPONSE`.
 
-Over MCP there is no payment step: every tool except `web_search_exa` is free. Search is paid over HTTP, with x402 or an API key.
+MCP includes a one-time 100-credit trial for scrape and map. Other tools and further use require a Bearer API key with account credits. HTTP accepts the same API key or x402.
 
 ---
 
@@ -105,13 +105,16 @@ Over HTTP each one is paid. Each one is served at `api.oassis.dev/web/v1/…` an
 | DELETE | `/web/v1/session/:id` | Closes a session | `web_session_close` | Free (time used is billed) |
 | POST | `/web/v1/scrape/batch` | Reads a list of URLs as a background job | `web_scrape_batch` | One scrape per URL |
 | GET | `/web/v1/scrape/batch/:id` | Status and results of a batch | `web_batch_status` | Free |
-| POST | `/web/v1/map` | Lists a site's URLs from its sitemap (optionally with the page) | `web_map` | $0.001 (no page) · $0.0015 (with page) |
+| POST | `/web/v1/map` | Lists a site's URLs from its sitemap (optionally with the page) | `web_map` | $0.002 (no page) · $0.003 (with page) |
 | POST | `/web/v1/crawl` | Follows a site's links and reads each page, as a job | `web_crawl` | Per page read, charged up front |
 | GET | `/web/v1/crawl/:id` | Status and results of a crawl | `web_crawl_status` | Free |
 | POST | `/web/v1/search` | Web search with Exa's index | `web_search_exa` | What Exa charges (≈ $0.007) |
 | POST | `/web/v1/feedback` | Report a result that was wrong | `web_feedback` | Free |
+| POST | `/agent/v1/tasks` | Start a research task (API key and balance) | `web_task_start` | $0.002 + steps |
+| GET | `/agent/v1/tasks/{id}` | Status, progress, sources, result and billing | `web_task_status` | Free |
+| POST | `/agent/v1/tasks/{id}/cancel` | Stop a task and return the unused budget | `web_task_cancel` | Free |
 
-Over MCP, every tool in this table is free except `web_search_exa`. Any `GET` on a route returns, for free, the fields it expects and what it costs.
+MCP and HTTP share credit prices. One credit = $0.002; verified accounts receive 1,000 welcome credits once. Any `GET` on a route returns, for free, the fields it expects and what it costs.
 
 ---
 
@@ -119,19 +122,19 @@ Over MCP, every tool in this table is free except `web_search_exa`. Any `GET` on
 
 | Item | Price |
 |---|---|
-| Page output: `markdown`, `html`, `links`, `controls`, `elements`, `accessibility`, `screenshot` | **$0.001** each |
+| Page output: `markdown`, `html`, `links`, `controls`, `elements`, `accessibility`, `screenshot` | **$0.002** each |
 | `pdf` output | $0.002 |
 | `json` output (model extraction) | $0.005 |
 | Output served from cache | $0.0002 |
 | Document by URL (PDF, Word, Excel, CSV) | $0.002 |
-| Site map (sitemap) | $0.001 |
-| Site map including the page | $0.0015 |
+| Site map (sitemap) | $0.002 |
+| Site map including the page | $0.003 |
 | Browser session, first minute | $0.005 |
 | Each further session minute | $0.004 |
 | Each action | $0.0005 |
 | Search | What Exa charges, passed through |
 
-Minimum charge per call: $0.001. The price is quoted before the work and charged after;
+Minimum charge per call: $0.002. The price is quoted before the work and charged after;
 **if the work does not happen, you are not charged.** Balances do not expire and there is no monthly fee.
 
 Crawls and batches are charged up front for the pages or urls they may read. A refund for work that never ran is a credit to an API-key account. A wallet payment (x402) is settled on-chain and cannot be reversed from here, so with x402 you pay for every url or the `limit` you ask for: map the site first.
@@ -169,7 +172,7 @@ and under the organization [github.com/oassisdev](https://github.com/oassisdev).
 Ask a question in plain words and get a structured answer with its sources. The agent plans
 its own steps: it decides what to search, which pages to read, and when it has enough.
 
-Tasks need an API key with a balance. They are not free, even where the single tools are.
+Tasks require an API key with credits over MCP/HTTP, reserving a maximum and charging actual execution cost. x402 can independently pay a fixed task package.
 
 ```bash
 curl -X POST https://api.oassis.dev/agent/v1/tasks \
@@ -261,3 +264,11 @@ Payments need `X402_PAY_TO` and, to settle on Base mainnet, CDP keys.
 
 [Elastic License 2.0](LICENSE). You may read, run, modify and host it for yourself; you may
 not offer it to third parties as a hosted or managed service.
+
+## Account credits
+
+1 basic single-format page = 1 credit = $0.002. Buy 2,500 / 10,000 / 25,000 credits for $5 / $20 / $50, once or optionally monthly. Purchased credits accumulate without scheduled expiry. MCP and HTTP use the same `Authorization: Bearer oas_…` key and balance. Other operations consume their quoted dollar price divided by $0.002; fractions are supported.
+
+Generate or revoke keys at https://oassis.dev/dashboard/billing. Verified accounts receive 1,000 welcome credits once. MCP without a key has a lifetime 100-credit scrape/map trial, associated with a salted Cloudflare IP hash (shared networks share the trial). When exhausted, the tool requests signup and an API key. Status/cancellation and discovery are free.
+
+See [billing operations](docs/prepaid-billing.md) for migrations, Stripe activation and alert delivery.

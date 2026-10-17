@@ -1,3 +1,6 @@
+import {createRequire} from 'node:module';
+import {readFileSync,readdirSync} from 'node:fs';
+const {DatabaseSync}=createRequire(import.meta.url)('node:sqlite');
 import { describe, expect, it } from "vitest";
 import { charge, generateKey, hashKey, KEY_PREFIX, sessionAccess } from "../src/billing/accounts";
 
@@ -7,35 +10,13 @@ import { charge, generateKey, hashKey, KEY_PREFIX, sessionAccess } from "../src/
  * own rule: it changes rows only when the balance covers the charge.
  */
 function fakeD1(startingBalance: number, active = true) {
-  const state = { balance: startingBalance, entries: [] as { micros: number; concept: string }[] };
-  const db = {
-    prepare(sql: string) {
-      return {
-        bind(...args: unknown[]) {
-          return {
-            async run() {
-              if (sql.includes("UPDATE accounts SET balance_micros = balance_micros - ")) {
-                const micros = args[0] as number;
-                if (!active || state.balance < micros) return { meta: { changes: 0 } };
-                state.balance -= micros;
-                return { meta: { changes: 1 } };
-              }
-              if (sql.includes("INSERT INTO transactions")) {
-                state.entries.push({ micros: args[2] as number, concept: args[3] as string });
-                return { meta: { changes: 1 } };
-              }
-              return { meta: { changes: 0 } };
-            },
-            async first() {
-              if (sql.includes("SELECT balance_micros")) return { balance: state.balance };
-              return null;
-            },
-          };
-        },
-      };
-    },
-  } as unknown as D1Database;
-  return { db, state };
+ const sql=new DatabaseSync(':memory:');
+ for(const file of readdirSync('migrations').filter(f=>f.endsWith('.sql')).sort())sql.exec(readFileSync('migrations/'+file,'utf8'));
+ sql.prepare('INSERT INTO accounts(id,created_at,balance_micros,active) VALUES(?,?,?,?)').run('a1',Date.now(),startingBalance,active?1:0);
+ const wrap=(query:string,args:unknown[]=[])=>({bind:(...a:unknown[])=>wrap(query,a),run:async()=>({meta:sql.prepare(query).run(...args)}),first:async()=>sql.prepare(query).get(...args)||null});
+ const db={prepare:wrap} as unknown as D1Database;
+ const state={get balance(){return sql.prepare('SELECT balance_micros n FROM accounts').get().n;},get entries(){return sql.prepare('SELECT micros,route AS concept FROM transactions').all().map((x:any)=>({...x}));}};
+ return {db,state};
 }
 
 describe("charge", () => {

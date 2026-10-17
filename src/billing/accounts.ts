@@ -57,22 +57,11 @@ export interface Charge {
  */
 export async function charge(db: D1Database, account: string, c: Charge): Promise<number | null> {
   if (c.micros <= 0) return null;
-  const res = await db
-    .prepare(
-      `UPDATE accounts SET balance_micros = balance_micros - ?1
-        WHERE id = ?2 AND active = 1 AND balance_micros - reserved_micros >= ?1`,
-    )
-    .bind(c.micros, account)
-    .run();
-  if (!res.meta.changes) return null;
-
-  const row = await db
-    .prepare(`SELECT balance_micros AS balance FROM accounts WHERE id = ?`)
-    .bind(account)
-    .first<{ balance: number }>();
-
-  await addEntry(db, account, -c.micros, c.concept, c.route, c.reference);
-  return row?.balance ?? 0;
+  try {
+    await db.prepare('INSERT INTO prepaid_debits(id,account,micros,at,route) VALUES(?,?,?,?,?)').bind(crypto.randomUUID(),account,c.micros,Date.now(),c.route??c.concept).run();
+  } catch(e) {if(String(e).includes('insufficient_balance'))return null;throw e;}
+  const row=await db.prepare('SELECT balance_micros AS balance FROM accounts WHERE id=?').bind(account).first<{balance:number}>();
+  return row?.balance??0;
 }
 
 /**
@@ -131,22 +120,6 @@ export async function recordWalletPayment(
 }
 
 /** Sessions open right now: the limit that stops browsers being left running. */
-export async function openSessions(db: D1Database, account: string): Promise<number> {
-  const row = await db
-    .prepare(`SELECT COUNT(*) AS n FROM sessions WHERE account = ? AND closed_at IS NULL`)
-    .bind(account)
-    .first<{ n: number }>();
-  return row?.n ?? 0;
-}
-
-/** Free sessions open right now, across everybody: they hold the scarcest resource we have. */
-export async function openFreeSessions(db: D1Database): Promise<number> {
-  const row = await db
-    .prepare(`SELECT COUNT(*) AS n FROM sessions WHERE gate = 'free' AND closed_at IS NULL`)
-    .first<{ n: number }>();
-  return row?.n ?? 0;
-}
-
 export async function registerSession(
   db: D1Database,
   id: string,
@@ -260,4 +233,11 @@ export function sessionAccess(
   if (!row) return "not_found";
   if ((row.account ?? null) !== (caller ?? null)) return "denied";
   return "ok";
+}
+
+export async function requestAccount(db: D1Database, headers: Headers): Promise<Account | null | 'invalid'> {
+ const auth = headers.get('authorization');
+ if (!auth) return null;
+ const key = /^Bearer (oas_[A-Za-z0-9]+)$/.exec(auth)?.[1];
+ return key ? (await accountForKey(db, key)) ?? 'invalid' : 'invalid';
 }

@@ -15,16 +15,18 @@
  */
 
 import type { Context } from "hono";
+import { CREDIT_PACKAGES } from "./billing/credits";
 import { ICON_LINKS } from "./icon";
 import { PER_FORMAT, PRICES, inDollars, mapPrice } from "./billing/prices";
 import { origin, prefixForHost } from "./http";
 import type { Env } from "./types";
+import { DEFAULT_LIMITS } from "./agent/request";
 
 /** What the page claims to be, in the words somebody would search for. */
-const TITLE = "oassis — web scraping, crawling and browser control API for AI agents";
+const TITLE = "Oassis — Web Infrastructure for AI Agents";
 const DESCRIPTION =
-  "Scrape any page or document to markdown, map and crawl whole sites, and drive a real browser. " +
-  "Pay per call with a wallet — no API key, no signup, no monthly plan.";
+  "Search, scrape, crawl and control a browser through one API. " +
+  "Delegate research through the Task API, connect via MCP or use HTTP endpoints with x402.";
 
 /** The house stylesheet, shared by every page a person reads. */
 export const STYLE = `<style>
@@ -199,22 +201,22 @@ export function landing(c: Context<{ Bindings: Env }>): string {
   const rows = prices
     .map(
       ([what, price, note]) =>
-        `<tr><td>${escape(what)}</td><td class="p">${escape(price)}</td><td class="n">${escape(note)}</td></tr>`,
+        `<tr><td>${escape(what)}</td><td class="p">${Number(price.slice(1))/0.002} credits · ${escape(price)}</td><td class="n">${escape(note)}</td></tr>`,
     )
     .join("");
 
   const tools: [string, string, string, string][] = [
-    ["web_scrape", "Read a page or document as markdown, html, links, controls, accessibility, elements, screenshot, pdf or json.", `${inDollars(PER_FORMAT.markdown)} per output`, "Over MCP: free"],
-    ["web_map", "List a site's urls, from its sitemap and optionally the page itself.", inDollars(mapPrice(false)), "Over MCP: free"],
-    ["web_session_open", "Open a real browser on a page and get its map of controls.", `${inDollars(PRICES.sessionOpen)} first minute`, "Over MCP: free"],
-    ["web_act", "Click, type, select, scroll and wait on an open session.", `${inDollars(PRICES.action)} per action`, "Over MCP: free"],
-    ["web_scrape_batch", "Read a list of urls you give it, as a background job.", "one scrape per url", "Over MCP: free"],
-    ["web_crawl", "Follow a site's links and read every page, as a background job.", "per page read", "Over MCP: free"],
-    ["web_batch_status", "Check a batch: status, results, or cancel it.", "free", "Over MCP: free"],
-    ["web_crawl_status", "Check a crawl: pages read, discovered, still queued.", "free", "Over MCP: free"],
-    ["web_session_close", "Close a session and stop browser time.", "free", "Over MCP: free"],
-    ["web_search_exa", "Search the web with Exa's index.", "Exa's price, about $0.007", "Paid: x402 or key"],
-    ["web_feedback", "Report a result that was wrong.", "free", "Over MCP: free"],
+    ["web_scrape", "Read a page or document as markdown, html, links, controls, accessibility, elements, screenshot, pdf or json.", `${inDollars(PER_FORMAT.markdown)} per output`, "Over MCP: credits"],
+    ["web_map", "List a site's urls, from its sitemap and optionally the page itself.", inDollars(mapPrice(false)), "Over MCP: credits"],
+    ["web_session_open", "Open a real browser on a page and get its map of controls.", `${inDollars(PRICES.sessionOpen)} first minute`, "Over MCP: credits"],
+    ["web_act", "Click, type, select, scroll and wait on an open session.", `${inDollars(PRICES.action)} per action`, "Over MCP: credits"],
+    ["web_scrape_batch", "Read a list of urls you give it, as a background job.", "one scrape per url", "Over MCP: credits"],
+    ["web_crawl", "Follow a site's links and read every page, as a background job.", "per page read", "Over MCP: credits"],
+    ["web_batch_status", "Check a batch: status, results, or cancel it.", "free", "Over MCP: credits"],
+    ["web_crawl_status", "Check a crawl: pages read, discovered, still queued.", "free", "Over MCP: credits"],
+    ["web_session_close", "Close a session and stop browser time.", "free", "Over MCP: credits"],
+    ["web_search_exa", "Search the web with Exa's index.", "Exa's price, about $0.007", "Over MCP: credits"],
+    ["web_feedback", "Report a result that was wrong.", "free", "Over MCP: credits"],
   ];
   const toolCards = tools
     .map(
@@ -252,21 +254,41 @@ export function landing(c: Context<{ Bindings: Env }>): string {
 <meta property="og:title" content="${escape(TITLE)}">
 <meta property="og:description" content="${escape(DESCRIPTION)}">
 <meta property="og:url" content="${base}/">
-<meta name="twitter:card" content="summary">
-<meta property="og:image" content="${base}/icon-512.png">
-<meta name="twitter:image" content="${base}/icon-512.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta property="og:image" content="${base}/og-image.png">
+<meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Oassis — web infrastructure for AI agents">
+<meta property="og:site_name" content="Oassis">
+<meta name="twitter:image" content="${base}/og-image.png">
 ${ICON_LINKS}
 <script type="application/ld+json">${jsonLd}</script>
+<script type="application/ld+json">${JSON.stringify({"@context":"https://schema.org","@graph":[{"@type":"WebSite",name:"Oassis",url:"https://oassis.dev/"},{"@type":"Organization",name:"Oassis",url:"https://oassis.dev/",logo:"https://oassis.dev/icon-512.png"}]})}</script>
 ${STYLE}
 ${LANDING_STYLE}
+<style>
+.task-section { color:#102d42 }
+.task-heading {display:flex;align-items:start;gap:32px;justify-content:space-between}
+.task-heading>div {max-width:740px}.task-heading .button{flex-shrink:0;margin-top:30px}
+.task-kicker {color:#2458c8;font-weight:600;margin-bottom:8px}.task-heading h2{font-size:clamp(30px,4vw,46px);border:0;margin:0 0 18px;line-height:1.15;letter-spacing:-.03em}
+.task-levels {display:grid;grid-template-columns:1fr 1fr;margin:0 0 24px;border-left:4px solid #2458c8;background:#e5eef3}
+.task-levels>div{padding:18px 24px}.task-levels span{display:block;color:#526879;font-size:14px}
+.task-demo {display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);border:1px solid #c9dae3;border-radius:14px;overflow:hidden;background:white}
+.task-request{padding:26px;min-width:0}.task-demo-top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}.task-demo-top h3{margin:0}
+.task-transport{padding:7px 12px;border:1px solid #c9dae3;background:white;color:#102d42;cursor:pointer;font:inherit}.task-transport[aria-pressed="true"]{background:#102d42;color:white}
+.oassis-home .task-request pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#102d42;color:#e5f2fa;font-size:13px;line-height:1.65}.task-request pre[hidden]{display:none}
+.task-result{background:#e5eef3;padding:26px}.task-result .demo-label{display:inline-block}.task-result h3{font-size:26px;margin:20px 0}.task-result ol{padding-left:22px}.task-result li{padding:8px 0}.task-result li span{display:block;color:#526879}.task-result>p:not(.demo-label){font-size:14px;color:#526879}
+.task-operations{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px;padding:10px 0 20px}.task-operations code{font-size:12px;overflow-wrap:anywhere}.task-operations p{font-size:13px;margin:10px 0}.task-billing{font-size:14px;color:#526879;border-top:1px solid #c9dae3;padding-top:20px}.task-billing strong{color:#102d42}
+.site-nav{flex-wrap:wrap;gap:18px}.site-nav nav{flex-wrap:wrap}
+@media(max-width:800px){.task-heading{display:block}.task-heading .button{margin:0 0 22px}.task-demo{grid-template-columns:1fr}.task-levels{grid-template-columns:1fr}.task-operations{grid-template-columns:1fr;gap:0}.task-request,.task-result{padding:20px}}
+</style>
 </head>
 <body class="oassis-home">
 <a class="skip-link" href="#main">Skip to content</a>
 <div class="wrap">
-<header class="site-nav"><a class="brand" href="/" aria-label="oassis home"><img src="/favicon.svg" alt="" width="35" height="35">oassis</a><nav aria-label="Main navigation"><a class="nav-reference" href="${api}/openapi.json">API reference</a><a class="nav-pricing" href="#pricing">Pricing</a><a class="nav-connect" href="#try">Connect your agent</a></nav></header>
+<header class="site-nav"><a class="brand" href="/" aria-label="oassis home"><img src="/favicon.svg" alt="" width="35" height="35">oassis</a><nav aria-label="Main navigation"><a href="#tools">Web Tools</a><a href="#task-api">Tasks</a><a href="/docs">Docs</a><a class="nav-reference" href="${api}/openapi.json">API reference</a><a class="nav-pricing" href="#pricing">Pricing</a><a href="/login">Log In</a><a class="nav-connect" href="/signup">Sign Up</a></nav></header>
 <main id="main">
-<section class="launch" aria-labelledby="hero-title">
-<div class="launch-top"><h1 id="hero-title">Give your agent<br>the web to work with.</h1><div class="launch-copy"><p>Find the right page. Read what matters. Open a browser and take the next step. Web infrastructure for AI agents, through one API.</p><div class="launch-actions"><a class="button" href="#try">Connect via MCP</a><a class="button secondary" href="${api}/openapi.json">Explore the API</a></div><p class="connection-note">No API key. No signup. Free over MCP, except search.</p></div></div>
+<section class="launch" id="tools" aria-labelledby="hero-title">
+<div class="launch-top"><h1 id="hero-title">Give your agent<br>the web to work with.</h1><div class="launch-copy"><p>Find the right page. Read what matters. Open a browser and take the next step. Web infrastructure for AI agents, through one API.</p><div class="launch-actions"><a class="button" href="#try">Connect via MCP</a><a class="button secondary" href="/docs">Explore the API</a></div><p class="connection-note">Try MCP with 100 credits. Sign up for 1,000 welcome credits and create your API key.</p></div></div>
 <div class="workflow" aria-label="Example agent workflow">
 <div class="workflow-menu" role="group" aria-label="Explore workflow steps"><p>One possible agent workflow</p>
 <button type="button" class="workflow-step" data-step="search" aria-pressed="true" aria-controls="panel-search"><span>01</span>Search</button>
@@ -306,10 +328,45 @@ web_session_close { "sessionId": "example-session" }</code></pre></div>
 </div></div><p class="workflow-caption">Select a step to inspect an example. No requests are sent. Your agent decides the workflow; Oassis provides the web tools.</p>
 </section>
 <div class="intro-band"><p class="descriptor">Search, scraping, crawling and browser control.</p><p class="statement">The web is more than text.<br>Give your agent the content, the controls, and a browser that remembers where it is.</p></div>
-<section class="content-section" id="tools">
-<h2>Tools your agents can call</h2>
+<section class="content-section task-section" id="task-api" aria-labelledby="task-title">
+<div class="task-heading"><div><p class="task-kicker">Tasks</p><h2 id="task-title">Give your agent a research task.</h2><p class="section-lead">Describe what you need to find out. Oassis searches and reads public pages, then returns an answer with sources. Track progress or cancel the task while it runs.</p></div><a class="button" href="/task-api">View Tasks documentation</a></div>
+<div class="task-levels" aria-label="Two levels of web access"><div><strong>Delegate the research</strong><span>Task: plan, search, read and synthesize</span></div><div><strong>Control each operation</strong><span>Web tools: search, scrape, crawl, browser and act</span></div></div>
+<div class="task-demo"><div class="task-request"><div class="task-demo-top"><h3>Start a task</h3><div role="group" aria-label="Task example transport"><button type="button" class="task-transport" data-task-transport="http" aria-pressed="true" aria-controls="task-http">HTTP</button><button type="button" class="task-transport" data-task-transport="mcp" aria-pressed="false" aria-controls="task-mcp">MCP</button></div></div>
+<pre id="task-http"><code>POST ${api}/agent/v1/tasks
+Content-Type: application/json
 
-<p>Every tool is live today. Each one works over MCP, or as a pay-per-call x402 endpoint.</p>
+{
+  "task": "Read this public pricing page and summarize the plans with source links.",
+  "mode": "research",
+  "urls": ["https://oassis.dev/"],
+  "limits": {
+    "max_cost_usd": ${DEFAULT_LIMITS.max_cost_usd},
+    "max_duration_seconds": ${DEFAULT_LIMITS.max_duration_seconds},
+    "max_steps": ${DEFAULT_LIMITS.max_steps}
+  }
+}</code></pre>
+<pre id="task-mcp" hidden><code>web_task_start
+{
+  "task": "Read this public pricing page and summarize the plans with source links.",
+  "mode": "research",
+  "urls": ["https://oassis.dev/"]
+}
+
+web_task_status
+{ "id": "TASK_ID", "access_token": "TASK_TOKEN" }
+
+web_task_cancel
+{ "id": "TASK_ID", "access_token": "TASK_TOKEN" }</code></pre>
+<p class="muted">Illustrative request. No requests are sent. Start returns a task ID and an <code>access_token</code>; keep both for status and cancellation.</p></div>
+<div class="task-result"><p class="demo-label">Illustrative lifecycle</p><h3>Follow the work.</h3><ol><li><strong>Queued</strong><span>The task is ready to run.</span></li><li><strong>Running</strong><span>Search, read sources and prepare the answer.</span></li><li><strong>Result</strong><span>Inspect the answer, source links and any missing evidence.</span></li></ol><p>Research can finish with a partial answer when evidence is missing. Check the returned status and result.</p><p class="muted">Task currently supports public-page research. Use the web tools below to orchestrate crawling or browser actions yourself.</p></div></div>
+<div class="task-operations"><div><h3>Start</h3><code>POST /agent/v1/tasks</code><p>MCP: <code>web_task_start</code></p></div><div><h3>Status</h3><code>GET /agent/v1/tasks/{id}</code><p>MCP: <code>web_task_status</code></p></div><div><h3>Cancel</h3><code>POST /agent/v1/tasks/{id}/cancel</code><p>MCP: <code>web_task_cancel</code></p></div></div>
+<p class="task-billing"><strong>MCP: API key and credits; reserve maximum budget and settle actual cost.</strong> HTTP/x402: creation charges the selected execution budget upfront (${escape(inDollars(DEFAULT_LIMITS.max_cost_usd * 1_000_000))} by default). Status and cancellation are free with <code>Task-Token</code>. No automatic on-chain refund of unused budget.</p>
+</section>
+<section class="content-section" id="tool-catalog">
+<h2>Individual tool reference</h2>
+<p class="section-lead">Build your own workflow, one operation at a time. Search, read pages, crawl websites and control a browser.</p>
+
+<p>Use an API key with shared credits over MCP or HTTP, or pay each HTTP call with x402.</p>
 
 <div class="grid">${toolCards}</div>
 
@@ -320,13 +377,13 @@ web_session_close { "sessionId": "example-session" }</code></pre></div>
 <div class="grid">
   <div class="card"><h3>Read any page</h3><p>Markdown, html, links and a map of every control, in one call. A PDF, Word, Excel or CSV url comes back as markdown without a browser.</p></div>
   <div class="card"><h3>Act on the page</h3><p>Open a session and it stays open: look, click, type, look again. The control references keep working between calls.</p></div>
-  <div class="card"><h3>Pay only per call</h3><p>Prices start at ${escape(inDollars(PER_FORMAT.markdown))}. A prepaid balance never expires. Failed work paid from that balance is credited back.</p></div>
+  <div class="card"><h3>Pay only per call</h3><p>Prices start at ${escape(inDollars(PER_FORMAT.markdown))}. HTTP calls use x402 wallet payments, without an account. MCP uses credits: a 100-credit trial for scrape and map, then an API key.</p></div>
 </div>
 
 </section>
 <section class="content-section" id="try">
 <h2>Connect once. Put the web to work.</h2>
-<div class="connect-panel"><h3>Connect through MCP</h3><p>Point your MCP client at <code>${api}/mcp</code>. Every tool except search works without an account.</p><pre><code>claude mcp add --transport http oassis ${api}/mcp</code></pre><button class="button" type="button" id="copy-mcp">Copy MCP URL</button><p id="copy-status" class="muted" role="status"></p></div>
+<div class="connect-panel"><h3>Connect through MCP</h3><p>Point your MCP client at <code>${api}/mcp</code>. Try scrape and map with 100 credits without an account. Create an API key for further use and all other tools.</p><pre><code>claude mcp add --transport http oassis ${api}/mcp</code></pre><button class="button" type="button" id="copy-mcp">Copy MCP URL</button><p id="copy-status" class="muted" role="status"></p></div>
 <h3>Or call the HTTP API</h3>
 
 <p>An unpaid request answers <code>402</code> with the exact price of that call. The agent signs
@@ -338,12 +395,11 @@ the loop, and the facilitator pays the gas.</p>
   -d '{"url":"https://oassis.dev","formats":["markdown","controls"]}'</code></pre>
 
 <p>That answers <code>402</code> with the price of that call. Pay it with a wallet and repeat the
-request, or send an API key and it is charged to a prepaid balance.</p>
+request. No account or API key is required.</p>
 
-<h3>Over MCP, with no key</h3>
+<h3>MCP trial and API keys</h3>
 
-<p>Every tool works without a key, except search, which Exa charges for. Send your client's own
-User-Agent: requests with the default of <code>curl</code> or an HTTP library are refused.</p>
+<p>MCP includes 100 trial credits for scrape and map. Use an API key for search, browser tools and research tasks.</p>
 
 <pre><code>curl -X POST ${api}/mcp \
   -H 'content-type: application/json' \
@@ -359,56 +415,57 @@ User-Agent: requests with the default of <code>curl</code> or an HTTP library ar
 </ul>
 
 </section>
+<section class="content-section" aria-labelledby="guides-title"><h2 id="guides-title">Build with the web.</h2><p class="muted">Practical guides for the next step in your agent's workflow.</p><div class="grid">
+<div class="card"><h3><a href="/task-api">Tasks</a></h3><p>Start public-page research, track progress and inspect answers with sources.</p></div>
+<div class="card"><h3><a href="/web-scraping-api">Web scraping API</a></h3><p>Turn pages and documents into Markdown, links and structured data.</p></div>
+<div class="card"><h3><a href="/web-crawling-api">Web crawling API</a></h3><p>Discover a site, set a page budget and collect a bounded crawl.</p></div>
+<div class="card"><h3><a href="/browser-api">Browser sessions and actions</a></h3><p>Inspect controls and work through a page without losing its state.</p></div>
+<div class="card"><h3><a href="/mcp">Connect through MCP</a></h3><p>Discover tools and connect a remote MCP-compatible client.</p></div>
+<div class="card"><h3><a href="/x402">Pay with x402</a></h3><p>Read a quote and authorize an HTTP request using a wallet.</p></div>
+<div class="card"><h3><a href="/use-cases">Agent use cases</a></h3><p>Build research, retrieval and monitoring around observed web data.</p></div>
+</div></section>
 <section class="content-section" id="pricing">
-<h2>Small calls. Explicit prices.</h2>
+<h2>Explicit prices for each level.</h2>
+<div class="grid">${CREDIT_PACKAGES.map(pack=>`<div class="card"><h3>$${pack.cents/100} · ${pack.credits.toLocaleString('en-US')} credits</h3><p>1 credit = $0.002. A basic page costs 1 credit. Buy once or monthly; purchased credits accumulate and do not expire.</p><a class="button" href="/dashboard/billing">Get credits</a></div>`).join('')}</div><p>Start with 100 trial credits over MCP for scrape and map. Create a verified account for 1,000 welcome credits once, and generate your API key. Card purchases require Stripe activation.</p>
+<p><strong>Task API:</strong> MCP has a 100-credit trial for scrape and map; other paid tools require an API key. HTTP task creation charges a fixed execution package, ${escape(inDollars(DEFAULT_LIMITS.max_cost_usd * 1_000_000))} by default. <a href="#task-api">See Task access and pricing</a>.</p>
+<h3>Web tools over HTTP</h3>
 
 <table><tbody>${rows}</tbody></table>
 
 <p class="muted">Priced per call, quoted before any work happens. A wallet payment is settled
-on-chain and cannot be reversed from here; a failed call paid with an API-key balance is credited back.</p>
+on-chain; tasks use a fixed execution budget with no automatic on-chain refund.</p>
 
 </section>
 <section class="content-section">
 <h2>A few things to know.</h2>
-
-<details>
-  <summary>What is oassis?</summary>
-  <p>A web-reading API for agents. It scrapes any page or document to markdown, maps and crawls whole
-  sites, and drives a real browser. You reach it over MCP or over HTTP.</p>
-</details>
-<details>
-  <summary>Do I need an account or an API key?</summary>
-  <p>No. Over MCP every tool works without a key, except search. Over HTTP each call is paid per call
-  with a wallet (x402). An API key is optional, for a prepaid balance.</p>
-</details>
-<details>
-  <summary>What is x402?</summary>
-  <p>An open, HTTP-native payment standard. An unpaid request answers <code>402</code> with the price;
-  the client signs a small USDC payment on Base and retries the same request.</p>
-</details>
-<details>
-  <summary>What is MCP?</summary>
-  <p>The Model Context Protocol, an open standard that lets AI clients connect to external tools.
-  Point your client at <code>${api}/mcp</code> and the tools appear.</p>
-</details>
-<details>
-  <summary>How much does it cost?</summary>
-  <p>From ${escape(inDollars(PER_FORMAT.markdown))} per output, priced per call and quoted before the
-  work runs. Search is passed through at the price Exa charges.</p>
-</details>
-<details>
-  <summary>Am I charged when something fails?</summary>
-  <p>Failed work paid from an API-key balance is credited back. Wallet payments settle on-chain and cannot be reversed from here; the 402 quotes the price before you pay.</p>
-</details>
-<details>
-  <summary>Which clients work with it?</summary>
-  <p>Any MCP client over MCP, and any x402-capable client or wallet over HTTP.</p>
-</details>
-<details>
-  <summary>Is it free to try?</summary>
-  <p>Yes, over MCP. Every tool except search runs without a key or a daily limit. Reads respect
-  robots.txt.</p>
-</details>
+<p class="section-lead">Choose the right level of control, understand access and pricing, and know what to expect from a result.</p>
+<h3>Getting started</h3>
+<details><summary>What is Oassis?</summary><p>Web infrastructure for AI agents and applications. Use individual tools to search, read and crawl public content or interact with a browser. Use Tasks to delegate public-page research and receive an answer with sources.</p></details>
+<details><summary>What is the difference between Web Tools and Tasks?</summary><p>Web Tools let your application choose each operation and build its own workflow. Tasks take a research question, plan the work, search and read public pages, then synthesize an answer. <a href="/docs">Compare the two approaches in Docs</a>.</p></details>
+<details><summary>Which one should I use?</summary><p>Choose Web Tools for page imports, datasets or workflows where you need control over every step. Choose Tasks when you want to delegate a research question and follow its progress rather than implement the research loop yourself.</p></details>
+<details><summary>Do I need an account or an API key?</summary><p>Scrape and map include a 100-credit MCP trial. Further use and other paid tools require an API key and credits. Paid HTTP operations use a wallet and x402. A Task access token lets you follow one task; it is not an account or general API key.</p></details>
+<details><summary>Can I use Oassis without writing code?</summary><p>You can connect Oassis to a compatible MCP client and ask that client to use its tools. Your client needs support for remote HTTP MCP servers. Oassis currently provides APIs and an MCP server; a standalone web research assistant is not yet available.</p></details>
+<h3>Access and pricing</h3>
+<details><summary>What is MCP?</summary><p>The Model Context Protocol lets AI clients discover and call external tools. Configure <code>${api}/mcp</code> in a compatible client. <a href="/mcp">See the connection guide</a>.</p></details>
+<details><summary>How many free credits do I get?</summary><p>MCP includes 100 trial credits for scrape and map. Search, Tasks and browser tools require an API key with sufficient credits. Parameters such as a crawl page count or task execution budget define one job; they are not daily usage allowances. Reads respect robots.txt.</p></details>
+<details><summary>Which clients work with it?</summary><p>Clients that support remote HTTP MCP servers can discover Oassis tools. Applications can also call the HTTP API using an x402-capable client. Your client decides when to invoke a tool; connecting Oassis does not automatically route every web request through it.</p></details>
+<details><summary>What is x402?</summary><p>An HTTP payment protocol. A request without payment receives a <code>402</code> challenge describing the price. The client signs a USDC payment on Base and retries the request. No Oassis account or API key is required. <a href="/x402">Read the payment guide</a>.</p></details>
+<details><summary>How much do Web Tools cost?</summary><p>Status and cancellation are free for the owning account. HTTP Markdown extraction starts at ${escape(inDollars(PER_FORMAT.markdown))} per requested output. Formats, rendering, browser time and the operation determine the price. HTTP search passes through the search provider's price. Read the <code>402</code> quote for the exact request.</p></details>
+<details><summary>How are Tasks priced?</summary><p>Tasks over MCP require an API key and sufficient credits. HTTP creation charges the selected execution package upfront, using <code>limits.max_cost_usd</code> (${escape(inDollars(DEFAULT_LIMITS.max_cost_usd * 1_000_000))} by default). Status and cancellation are free with the task token. There is no automatic on-chain refund of unused budget.</p></details>
+<details><summary>Does a 402 response mean my request ran?</summary><p>No. A payment challenge is not an execution result or proof of payment. Use an x402-capable client to authorize payment and retry. Inspect the final response, and for background jobs follow the returned identifier through the status operation.</p></details>
+<details><summary>Am I charged when something fails?</summary><p>Status and cancellation are free for the owning account. HTTP payment and execution are separate parts of the request: inspect the response and payment receipt when troubleshooting. For Tasks, the selected package is charged upfront and a failed, partial or cancelled result does not trigger an automatic on-chain refund.</p></details>
+<h3>Research tasks</h3>
+<details><summary>What can a Task do today?</summary><p>Research public pages: plan, search, read and synthesize an answer with source links. You can provide up to five starting URLs. Tasks currently do not orchestrate site crawling, persistent browser sessions or browser actions; use Web Tools to build those workflows.</p></details>
+<details><summary>How do I start a Task and get the result?</summary><p>Use <code>web_task_start</code> over MCP or <code>POST /agent/v1/tasks</code> over HTTP. Keep the returned ID and <code>access_token</code>. Follow progress with <code>web_task_status</code> or <code>GET /agent/v1/tasks/{id}</code>, sending <code>Task-Token</code> for HTTP. <a href="/task-api">See all Task examples</a>.</p></details>
+<details><summary>Can I cancel a Task?</summary><p>Yes. Use <code>web_task_cancel</code> with the ID and access token, or <code>POST /agent/v1/tasks/{id}/cancel</code> with the <code>Task-Token</code> header. Cancellation requests the task to stop; inspect its status to confirm the outcome. HTTP cancellation does not automatically refund the package.</p></details>
+<details><summary>What does a partial research result mean?</summary><p>The research could not establish everything requested from the available evidence. Check the result's sources and missing evidence before using the answer. Refine the question or provide more relevant public URLs for another task.</p></details>
+<h3>Web content and browser workflows</h3>
+<details><summary>Which output formats can I request?</summary><p>Depending on the tool, page outputs include Markdown, HTML, links, controls, accessibility, elements, screenshots, PDF and structured JSON. Select the formats your application needs; multiple HTTP outputs can add to the price. <a href="/web-scraping-api">See extraction examples</a>.</p></details>
+<details><summary>Can I read documents as well as web pages?</summary><p>Supported PDF, Word, Excel and CSV URLs can be converted to Markdown. The document must be reachable and in a supported format. <a href="/web-scraping-api">Read the scraping guide</a>.</p></details>
+<details><summary>Should I use map, crawl or batch?</summary><p>Use map to discover a site's URLs. Use crawl to follow links and read pages as a background job. Use batch when you already have the list of URLs. Keep the job identifier and retrieve its status and results rather than starting the same job again.</p></details>
+<details><summary>When do I need a browser session?</summary><p>Use a session when the workflow needs page state or interaction. Open it, inspect the controls, run actions and read the updated state. Close it when finished. Your application chooses and verifies the actions. <a href="/browser-api">See the browser lifecycle</a>.</p></details>
+<details><summary>Can Oassis access every website?</summary><p>No. Access restrictions, robots.txt, anti-bot systems, unsupported content and page changes can prevent retrieval or interaction. A browser does not guarantee access. Inspect errors and source content instead of assuming every requested page was read.</p></details>
+<details><summary>Where can I find schemas and integration examples?</summary><p>Start with <a href="/docs">Docs</a>, use the <a href="/task-api">Tasks guide</a> for research, and consult the <a href="${api}/openapi.json">OpenAPI reference</a> for HTTP schemas. MCP clients can discover tool parameters through <code>tools/list</code>.</p></details>
 
 </section>
 </main>
@@ -425,6 +482,12 @@ on-chain and cannot be reversed from here; a failed call paid with an API-key ba
 </div>
 <script>
 (function () {
+  document.querySelectorAll('[data-task-transport]').forEach(function (button) {
+    button.addEventListener('click', function () {
+      document.querySelectorAll('[data-task-transport]').forEach(function (tab) { tab.setAttribute('aria-pressed', String(tab === button)); });
+      ['http', 'mcp'].forEach(function (transport) { document.getElementById('task-' + transport).hidden = transport !== button.dataset.taskTransport; });
+    });
+  });
   var steps = document.querySelectorAll('[data-step]');
   steps.forEach(function (button) {
     button.addEventListener('click', function () {
@@ -510,7 +573,12 @@ export function sitemapXml(c: Context<{ Bindings: Env }>): string {
  * entry a map then discards as off-site.
  */
 export function sitemapFor(base: string, prefix: string): string {
-  const urls = ["/", `${prefix}/scrape`, "/llms.txt", "/openapi.json", "/privacy", "/terms", "/support"];
+  const site = ["oassis.dev", "www.oassis.dev"].includes(new URL(base).hostname);
+  const urls = site
+    ? ["/", "/docs", "/task-api", "/web-scraping-api", "/web-crawling-api", "/browser-api", "/mcp", "/x402", "/use-cases", "/privacy", "/terms", "/support"]
+    : ["/privacy", "/terms", "/support"];
+  // Keep the exported two-argument interface used by the text renderer.
+  void prefix;
   return `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${urls.map((u) => `  <url><loc>${base}${u === "/" ? "/" : u}</loc></url>`).join("\n")}

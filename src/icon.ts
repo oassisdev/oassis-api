@@ -2,6 +2,7 @@ import type { Hono } from "hono";
 import type { Env } from "./types";
 
 import iconSvg from "./assets/icon.svg";
+import socialImage from "./assets/og-image.png";
 import icon512 from "./assets/icon-512.png";
 import icon180 from "./assets/icon-180.png";
 import faviconIco from "./assets/favicon.ico";
@@ -24,6 +25,7 @@ export const ICON_LINKS = `<link rel="icon" href="/favicon.ico" sizes="32x32">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">`;
 
 export function mountIcon(app: Hono<{ Bindings: Env }>) {
+  app.get("/og-image.png", () => binary(socialImage, "image/png"));
   app.get("/favicon.svg", () =>
     new Response(iconSvg, {
       headers: { "content-type": "image/svg+xml; charset=utf-8", "cache-control": FOREVER },

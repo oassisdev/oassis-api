@@ -93,5 +93,4 @@ export function PROMPTS(_c: Ctx) {
 }
 
 /** What a keyless client gets, said once here so the prompts and the docs cannot disagree. */
-export const freeLine = () =>
-  "Without a key, every tool works over MCP except web_search_exa, which is paid.";
+export const freeLine = () => 'MCP includes 100 trial credits for scrape and map; all other paid tools require an API key. Verified accounts receive 1,000 welcome credits. 1 credit = $0.002. HTTP accepts the same API key or an independent x402 payment. Task status/cancel use the owning key, or Task-Token for x402 and legacy tasks.' ;

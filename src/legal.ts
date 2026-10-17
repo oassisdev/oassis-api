@@ -12,7 +12,7 @@ import type { Context } from "hono";
 import { ICON_LINKS } from "./icon";
 import { STYLE } from "./landing";
 import { origin } from "./http";
-import { TRACE_CAP, TRACE_DAYS } from "./traces";
+import { TRACE_DAYS } from "./traces";
 import type { Env } from "./types";
 
 /** Where a person writes when something is wrong. One address, answered by a person. */
@@ -50,11 +50,11 @@ export function privacyPage(c: Context<{ Bindings: Env }>): string {
   return page(
     c,
     "Privacy",
-    "What oassis stores, for how long, and what it never collects. No names, no email addresses, and no scraped content kept in our database.",
+    "What Oassis stores for API calls and optional website accounts, including authentication cookies and account deletion.",
     `
 <h1>Privacy</h1>
 
-<p class="muted">Last updated 1 October 2026.</p>
+<p class="muted">Last updated 17 October 2026.</p>
 
 <p>oassis is an API that fetches web pages on behalf of whoever calls it. This page says
 exactly what we keep while doing that. It describes the system we actually run, and it
@@ -63,12 +63,9 @@ changes when the system does.</p>
 <h2>What we never collect</h2>
 
 <ul>
-  <li><strong>No account identity.</strong> An account is an opaque id and a balance. We do
-  not ask for or store a name, an email address, a postal address or a phone number.</li>
-  <li><strong>No passwords.</strong> There is no login. An API key is stored only as a hash,
-  so a copy of our database does not let anyone call the API.</li>
-  <li><strong>No payment instruments.</strong> We never see a card number. Wallet payments
-  settle on a public blockchain and we keep only the transaction reference.</li>
+  <li><strong>No account required for API access.</strong> MCP offers a 100-credit trial for scrape and map. Further use requires a verified account and an API key with credits. HTTP tools also support x402 without an account.</li>
+  <li><strong>No plaintext passwords.</strong> For website accounts we store a salted password hash, never your password. Authentication request and response bodies are excluded from the tool request log.</li>
+  <li><strong>No card numbers.</strong> Stripe handles card entry and storage. We store Stripe customer and payment-method identifiers, payment amounts and invoice links, not full card numbers. Wallet payments settle on a public blockchain.</li>
   <li><strong>No conversation data.</strong> We do not read, request or store your prompts,
   chat history, files or anything else from the client calling us, beyond the parameters a
   tool needs to run.</li>
@@ -79,18 +76,22 @@ changes when the system does.</p>
 <table>
 <thead><tr><th>What</th><th>Why</th><th>Kept</th></tr></thead>
 <tbody>
-<tr><td>Account id, balance, API key hash</td><td>To charge the right balance</td><td>Until the account is deleted</td></tr>
+<tr><td>Optional website account: email, display name, verification status, password hash or linked OAuth provider id and encrypted OAuth tokens</td><td>To create and authenticate your website account</td><td>Until the account is deleted</td></tr>
+<tr><td>Website sessions, IP address and user-agent</td><td>Secure login and abuse prevention</td><td>Sessions expire after 7 days; expired records may remain until account deletion</td></tr>
+<tr><td>Authentication rate-limit records</td><td>Prevent repeated password guessing</td><td>Until operational cleanup or account deletion where identifiable</td></tr>
+<tr><td>Legacy billing account id, balance, API key hash</td><td>To charge the right balance</td><td>Until the account is deleted</td></tr>
 <tr><td>One row per billable call: time, amount, route, reference</td><td>So a charge can be explained and disputed</td><td>Until the account is deleted</td></tr>
 <tr><td>Browser sessions and jobs: when opened, how much charged</td><td>Billing and support</td><td>Until the account is deleted</td></tr>
 <tr><td>Feedback you choose to send</td><td>To fix what is broken</td><td>Until acted on</td></tr>
 <tr><td>Rendered pages, cached</td><td>So a repeat read is cheaper for you</td><td>Short-lived, then discarded</td></tr>
 <tr><td>A short request log: time, route, status, how long it took, your IP, your
 user-agent, and a truncated copy of the request and the answer</td><td>So a call can be
-explained when something goes wrong</td><td>The most recent ${TRACE_CAP.toLocaleString("en")}
-requests, and never more than ${TRACE_DAYS} days</td></tr>
+explained when something goes wrong</td><td>${TRACE_DAYS} days</td></tr>
 </tbody>
 </table>
 
+<h3>Website cookies and social sign-in</h3>
+<p>Signing in sets essential, Secure, HttpOnly session cookies for oassis.dev. They are not advertising cookies. Your browser may store your last successful sign-in method to display “Last used”. If you choose an enabled Google or GitHub sign-in, that provider authenticates you and shares your profile and email with Oassis under its own privacy policy. Social sign-in may not be available until configured.</p>
 <h3>Calls with no key and your IP address</h3>
 
 <p>Calls made with no key and no account are not counted per address: there is no daily allowance to keep. The request log above still records the address of each call.</p>
@@ -98,9 +99,8 @@ requests, and never more than ${TRACE_DAYS} days</td></tr>
 <h3>About the request log</h3>
 
 <p>We keep a short operational log of recent requests so that a call can be explained when
-something goes wrong. It is <strong>bounded in both directions</strong>: at most
-${TRACE_CAP.toLocaleString("en")} requests are kept at any time, nothing older than
-${TRACE_DAYS} days survives, and the bodies are stored truncated — enough to see what was
+something goes wrong. It is retained for ${TRACE_DAYS} days without a row-count limit; older entries are
+removed during maintenance. The bodies are stored truncated — enough to see what was
 asked for, not a copy of the answer. Large responses are recorded as a size and never read.
 It is read by us, to run the service, and by nobody else.</p>
 
@@ -111,6 +111,7 @@ long as it takes to answer, plus a short cache so that asking twice costs you le
 do not keep a copy of scraped content in our database</strong>, and we do not build a corpus
 out of what our users read.</p>
 
+<h2>Card payments and prepaid balance</h2><p>When enabled, Stripe processes card payments and billing details. We retain your customer identifier, saved payment-method identifier if you consent, purchase and refund records, balance movements and automatic top-up settings. Authentication and billing bodies are excluded from tool traces. Financial records may need retention for accounting and disputes after account deletion.</p>
 <h2>Who else sees anything</h2>
 
 <ul>
@@ -120,6 +121,8 @@ out of what our users read.</p>
   operational logs on our behalf.</li>
   <li><strong>A search provider</strong>, but only for the search route, and only the query
   you sent. Every other route stays with us.</li>
+  <li><strong>Your sign-in provider</strong>, if you choose Google or GitHub when available, to authenticate your website account.</li>
+  <li><strong>Stripe</strong>, when you choose card payments, to process your payment and provide invoices.</li>
   <li><strong>The public blockchain</strong>, for wallet payments, which are public by design.</li>
 </ul>
 
@@ -129,10 +132,9 @@ not listed above.</p>
 <h2>Your choices</h2>
 
 <ul>
-  <li><strong>Use it without an account.</strong> The free tier needs no identity at all.</li>
+  <li><strong>Use it without an account.</strong> MCP and x402 do not require a website account.</li>
   <li><strong>Ask us to delete your account</strong> and everything attached to it, by writing
-  to <a href="mailto:${SUPPORT_EMAIL}">${SUPPORT_EMAIL}</a>. Because an account carries no
-  personal details, deletion removes the balance, the key hashes and the charge history.</li>
+  to <a href="mailto:${SUPPORT_EMAIL}">${SUPPORT_EMAIL}</a>. Deletion removes your website identity, linked provider records and sessions. Blockchain transactions remain public; operational and billing records may need to be retained to resolve charges.</li>
   <li><strong>Ask what we hold</strong> at the same address.</li>
 </ul>
 
@@ -160,7 +162,7 @@ export function termsPage(c: Context<{ Bindings: Env }>): string {
     `
 <h1>Terms of service</h1>
 
-<p class="muted">Last updated 2 October 2026.</p>
+<p class="muted">Last updated 17 October 2026.</p>
 
 <p>These terms cover the oassis API at <code>${base}</code> and the MCP server at
 <code>${base}/mcp</code>. Using either means accepting them. They are written to be read, not
@@ -171,6 +173,8 @@ to be survived.</p>
 <p>oassis fetches web pages and documents you name, converts them, lists and crawls sites you
 name, drives a browser session on your behalf, and passes a search query to a search provider.
 It acts on <strong>your</strong> instructions, as your agent, against the urls you choose.</p>
+
+<h2>Optional prepaid payments</h2><p>Website users with a verified email can purchase USD-denominated balance when card payments are enabled. Available packages and any applicable taxes are shown before payment. Purchased balance has no scheduled expiry and is used at the operation prices shown by Oassis. Contact support about refunds or disputed charges.</p><p>Monthly purchases are optional and require explicit authorization. Your selected package is charged monthly; purchased credits accumulate without scheduled expiry. Cancel future renewals from Balance &amp; billing. Exhausting credits does not trigger an extra charge.</p><p>Prepaid research tasks reserve the selected maximum budget, settle actual execution charges, and release unused funds. This differs from the fixed execution package paid through x402. MCP and API-key HTTP calls consume the same account credits. One basic page costs one credit ($0.002). Verified accounts receive 1,000 welcome credits once; generating more API keys does not grant more credits.</p>
 
 <h2>What you are responsible for</h2>
 

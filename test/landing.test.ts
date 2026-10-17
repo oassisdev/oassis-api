@@ -32,7 +32,7 @@ describe("the page for a person", () => {
   });
 
   it("carries what a search engine reads", () => {
-    expect(html).toMatch(/<title>[^<]*scraping[^<]*<\/title>/i);
+    expect(html).toMatch(/<title>[^<]*Web Infrastructure[^<]*<\/title>/i);
     expect(html).toMatch(/<meta name="description" content="[^"]{80,}"/);
     expect(html).toContain('<link rel="canonical" href="https://oassis.dev/">');
     expect(html).toContain('<script type="application/ld+json">');
@@ -46,8 +46,8 @@ describe("the page for a person", () => {
   });
 
   it("leads with what the competition cannot say", () => {
-    expect(html).toContain("No API key");
-    expect(html).toContain("No signup");
+    expect(html).toContain("100 credits");
+    expect(html).toContain("1,000 welcome credits");
   });
 
   it("gives a request that can be pasted, against the API host", () => {
@@ -70,7 +70,8 @@ describe("what crawlers ask for first", () => {
   it("lists the pages worth indexing", () => {
     const xml = sitemapXml(ctx());
     expect(xml).toContain("<loc>https://oassis.dev/</loc>");
-    expect(xml).toContain("/llms.txt");
-    expect(xml).toContain("/openapi.json");
+    expect(xml).toContain("/docs</loc>");
+    expect(xml).toContain("/browser-api</loc>");
+    expect(xml).not.toContain("/web/v1/scrape");
   });
 });

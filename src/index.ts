@@ -25,13 +25,13 @@ import { cacheable } from "./cache";
 import type { Env } from "./types";
 import { billing, parsedBody } from "./billing";
 import { mcp } from "./mcp";
-import { account } from "./account";
+
 import { feedback } from "./feedback";
 import { agentRoutes } from "./agent/routes";
 import serverManifest from "../server.json";
 import {
-  accountForKey,
   closeSession,
+  requestAccount,
   credit,
   jobOwner,
   registerJob,
@@ -47,6 +47,10 @@ import type { CrawlMessage } from "./jobs/crawl";
 import { mapSite } from "./map";
 import { landing, robotsTxt, sitemapXml, servedText } from "./landing";
 import { mountIcon } from "./icon";
+import { mountSitePayments, prepaidIdentity } from "./site-payments";
+import { creditNotices } from "./billing/notices";
+import { mountSiteAuth } from "./site-auth";
+import { mountSitePages } from "./site-pages";
 import { mountTraceLog } from "./traces";
 import { privacyPage, supportPage, termsPage } from "./legal";
 import { actDoc, batchDoc, crawlDoc, doc, mapDoc, searchDoc, sessionDoc } from "./docs";
@@ -70,6 +74,9 @@ const app = new Hono<{ Bindings: Env }>();
  * opposite of what it is for.
  */
 mountTraceLog(app);
+mountSiteAuth(app);
+mountSitePayments(app);
+mountSitePages(app);
 
 // Billing first: no product route does any work unpaid.
 app.use(billing);
@@ -84,7 +91,15 @@ app.route("/", mcp);
 
 // Account introspection. Free and outside the billing guard on purpose: asking how
 // much money you have left cannot cost money.
-app.route("/", account);
+
+
+for(const path of ['/web/v1/account','/v1/account'])app.get(path,async c=>{
+ c.header('cache-control','no-store');
+ const account=await requestAccount(c.env.BILLING,c.req.raw.headers);
+ if(!account||account==='invalid')return c.json({error:'api_key_required'},401);
+ const row=await c.env.BILLING.prepare('SELECT balance_micros,reserved_micros FROM accounts WHERE id=?').bind(account.id).first<{balance_micros:number;reserved_micros:number}>();
+ return c.json({account:account.id,credits:{available:(row!.balance_micros-row!.reserved_micros)/2000,reserved:row!.reserved_micros/2000,unit_usd:0.002},recharge_url:'https://oassis.dev/dashboard/billing'});
+});
 
 // Reporting a bad answer is free: charging for a complaint would mean paying to tell us
 // we are broken.
@@ -379,19 +394,16 @@ app.on("POST", bothPaths("scrape/batch"), async (c) => {
  * not for anyone who guesses an id.
  */
 async function jobCaller(c: Context<{ Bindings: Env }>): Promise<string | null | Response> {
-  const key = (c.req.header("authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
-  if (key) {
-    const found = await accountForKey(c.env.BILLING, key);
-    if (!found) {
-      return c.json({ success: false, error: "unauthorized", message: "Invalid or revoked key." }, 401);
-    }
-    return found.id;
-  }
   /**
    * A wallet caller proves who they are the same way they paid: by signing. Collecting is
    * free, so there is no payment to make here — the signature on the header is enough to
    * show the job is theirs, and without it a wallet job would be readable by anyone.
    */
+  const key=await requestAccount(c.env.BILLING,c.req.raw.headers);
+  if(key === "invalid")return c.json({error:"invalid_api_key"},401);
+  if(key)return key.id;
+  const account=await prepaidIdentity(c.env,c.req.raw);
+  if(account)return account;
   const wallet = payerFromHeaders(c.req.raw.headers);
   return wallet ? walletIdentity(wallet) : null;
 }
@@ -676,4 +688,4 @@ app.onError((e, c) => {
   return c.json({ success: false, error: "internal", message: "Unexpected error." }, 500);
 });
 
-export default app satisfies ExportedHandler<Env>;
+export default {fetch:app.fetch,scheduled:(_controller:ScheduledController,env:Env,ctx:ExecutionContext)=>{ctx.waitUntil(creditNotices(env));}} satisfies ExportedHandler<Env>;

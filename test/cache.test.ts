@@ -129,9 +129,9 @@ describe("CachedRenderer", () => {
 
 describe("the price carries the discount", () => {
   it("a hit costs the cache price, not the format's", () => {
-    expect(scrapePrice(["markdown"])).toBe(1_000);
+    expect(scrapePrice(["markdown"])).toBe(2_000);
     expect(scrapePrice(["markdown"], ["markdown"])).toBe(PRICES.cacheHit);
-    expect(scrapePrice(["markdown", "pdf"], ["pdf"])).toBe(1_000 + PRICES.cacheHit);
+    expect(scrapePrice(["markdown", "pdf"], ["pdf"])).toBe(2_000 + PRICES.cacheHit);
     expect(priceOfRequest("scrape", { formats: ["json"] }, ["json"])).toBe(PRICES.cacheHit);
   });
 

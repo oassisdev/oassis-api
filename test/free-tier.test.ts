@@ -16,9 +16,9 @@ describe("the keyless MCP tier", () => {
     }
   });
 
-  it("refuses search, which is paid, and says the price and how to pay", async () => {
-    expect(await checkFreeCall(client, { tool: "web_search_exa" })).toBe("paid_search");
-    expect(PAID_OVER_MCP.has("web_search_exa")).toBe(true);
+  it("allows search without an API key", async () => {
+    expect(await checkFreeCall(client, { tool: "web_search_exa" })).toBeNull();
+    expect(PAID_OVER_MCP.has("web_search_exa")).toBe(false);
     const text = explainRefusal("paid_search", "$0.007");
     expect(text).toContain("$0.007");
     expect(text).toContain("/web/v1/search");
@@ -31,17 +31,17 @@ describe("the keyless MCP tier", () => {
     }
   });
 
-  it("refuses a client that identifies as an HTTP library", async () => {
+  it("does not gate calls by User-Agent", async () => {
     expect(looksLikeClient("curl/8.4.0")).toBe(false);
     expect(looksLikeClient(undefined)).toBe(false);
     expect(looksLikeClient("MiAgente/1.0")).toBe(true);
-    expect(await checkFreeCall({ userAgent: "curl/8.4.0" }, { tool: "web_scrape" })).toBe("not_a_client");
+    expect(await checkFreeCall({ userAgent: "curl/8.4.0" }, { tool: "web_scrape" })).toBeNull();
     expect(explainRefusal("not_a_client", "$0.001")).toContain("User-Agent");
   });
 
-  it("caps browser sessions open at once, as capacity", async () => {
+  it("does not cap concurrent MCP sessions", async () => {
     expect(await checkFreeCall(client, { tool: "web_session_open", sessionsOpen: FREE_SESSION_SLOTS - 1 })).toBeNull();
-    expect(await checkFreeCall(client, { tool: "web_session_open", sessionsOpen: FREE_SESSION_SLOTS })).toBe("sessions_busy");
+    expect(await checkFreeCall(client, { tool: "web_session_open", sessionsOpen: FREE_SESSION_SLOTS })).toBeNull();
   });
 
   it("honours robots.txt for every url of a free batch, not only the first", async () => {

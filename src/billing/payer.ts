@@ -46,5 +46,5 @@ export function payerAddress(paymentHeader: string | undefined): string | null {
 
 /** Reads the payer from a request's headers. */
 export function payerFromHeaders(headers: Headers): string | null {
-  return payerAddress(headers.get(PAYMENT_HEADER) ?? undefined);
+  return payerAddress(headers.get("payment-signature") ?? headers.get(PAYMENT_HEADER) ?? undefined);
 }

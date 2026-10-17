@@ -1,6 +1,6 @@
 /**
- * The keyless MCP tier: every tool over MCP works without a key or an account, except
- * `web_search_exa`, which is bought from Exa and so is paid.
+ * The keyless MCP trial permits scrape and map only, within 100 credits.
+ * Trial accounting and paid-tool selection live in mcp.ts and billing/trial.ts.
  *
  * What is left is what protects the service rather than what limits the caller: a client
  * must say what it is, a site's robots.txt is respected on free reads, and browser sessions
@@ -8,13 +8,13 @@
  */
 
 /** Tools a keyless MCP caller cannot use: each one is bought from somebody else. */
-export const PAID_OVER_MCP: ReadonlySet<string> = new Set(["web_search_exa"]);
+export const PAID_OVER_MCP: ReadonlySet<string> = new Set();
 
 /** Browser sessions open at once across keyless callers. A capacity, not a quota. */
-export const FREE_SESSION_SLOTS = 3;
+export const FREE_SESSION_SLOTS = Infinity;
 
 /** Free answers accept an hour-old cache: a swarm on the same pages costs one render. */
-export const FREE_MAX_AGE_MS = 60 * 60 * 1000;
+
 
 /** Defaults of HTTP libraries and crawlers: the free tier is for MCP clients. */
 const NOT_A_CLIENT =
@@ -73,9 +73,9 @@ export async function checkFreeCall(
   caller: { userAgent?: string },
   call: FreeCall,
 ): Promise<FreeRefusal | null> {
-  if (PAID_OVER_MCP.has(call.tool)) return "paid_search";
-  if (!looksLikeClient(caller.userAgent)) return "not_a_client";
-  if (call.tool === "web_session_open" && (call.sessionsOpen ?? 0) >= FREE_SESSION_SLOTS) return "sessions_busy";
+  void caller;
+
+
   const targets = [call.url, ...(call.urls ?? [])].filter((u): u is string => typeof u === "string");
   const allowed = await Promise.all(targets.map((u) => robotsAllow(u)));
   if (allowed.includes(false)) return "robots";

@@ -64,6 +64,7 @@ export async function storeFeedback(
   who: string | null,
   data: z.infer<typeof feedbackRequest>,
   fallbackRoute?: string,
+  unlimited = false,
 ): Promise<"stored" | "too_many"> {
   const since = Date.now() - 86_400_000;
   const today = who
@@ -73,7 +74,7 @@ export async function storeFeedback(
     : await env.BILLING.prepare(`SELECT COUNT(*) AS n FROM feedback WHERE account IS NULL AND at >= ?`)
         .bind(since)
         .first<{ n: number }>();
-  if ((today?.n ?? 0) >= (who ? MAX_PER_DAY : MAX_ANONYMOUS_PER_DAY)) return "too_many";
+  if (!unlimited && (today?.n ?? 0) >= (who ? MAX_PER_DAY : MAX_ANONYMOUS_PER_DAY)) return "too_many";
 
   await env.BILLING.prepare(
     `INSERT INTO feedback (account, at, verdict, route, reference, url, comment)

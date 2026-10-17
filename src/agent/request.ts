@@ -20,7 +20,7 @@ export const taskRequest = z
     urls: z.array(z.string().url().max(500)).max(MAX_URLS).default([]).describe("Pages to read first, up to 5. Public http or https urls only."),
     limits: z
       .object({
-        max_cost_usd: z.number().min(MIN_COST_USD).max(MAX_LIMITS.max_cost_usd).default(DEFAULT_LIMITS.max_cost_usd).describe("Most the task may cost, in USD. Reserved up front; the rest is returned."),
+        max_cost_usd: z.number().min(MIN_COST_USD).max(MAX_LIMITS.max_cost_usd).default(DEFAULT_LIMITS.max_cost_usd).describe("Most the task may cost, in USD. Execution budget. Reserved against account credits over MCP/HTTP with an API key; charged as a fixed package over HTTP/x402. No automatic on-chain refund."),
         max_duration_seconds: z
           .number()
           .int()

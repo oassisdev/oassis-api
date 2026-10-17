@@ -23,7 +23,7 @@ describe("las dos puertas", () => {
    * `the request was not valid` solo existe en MCP a propósito: el guardia de HTTP valida
    * antes de cobrar, así que allí no hay nada que devolver.
    */
-  const SOLO_MCP = new Set(["the request was not valid"]);
+  const SOLO_MCP = new Set(["the request was not valid", "batch did not start", "crawl did not start"]);
 
   it("devuelven el dinero por los mismos motivos", () => {
     const enHttp = motivos(http);

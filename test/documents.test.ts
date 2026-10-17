@@ -108,6 +108,6 @@ describe("what a document costs", () => {
       priceOfRequest("scrape", { url: "https://a.com/r.pdf", formats: ["markdown", "html", "links"] }),
     ).toBe(2_000);
     // A page is still priced per output.
-    expect(priceOfRequest("scrape", { url: "https://a.com/page", formats: ["markdown"] })).toBe(1_000);
+    expect(priceOfRequest("scrape", { url: "https://a.com/page", formats: ["markdown"] })).toBe(2_000);
   });
 });

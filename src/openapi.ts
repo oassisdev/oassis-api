@@ -89,17 +89,18 @@ function properties(request: Record<string, string> | undefined): Record<string,
  * x-x402 quote. They need an API key, and the reserve is stated where a caller reads the price.
  */
 function agentTaskPaths(): Record<string, unknown> {
-  const bearer = [{ bearerAuth: [] }];
-  const unauthorized = { "401": { description: "No key, or an invalid or revoked key." } };
-  const notFound = { "404": { description: "No task with that id belongs to this account." } };
+  const bearer = [{ apiKey: [] },{ taskToken: [] }];
+  const unauthorized = { "401": { description: "Missing or invalid task-scoped access token." } };
+  const notFound = { "404": { description: "Task not found or task token does not match." } };
   return {
     ["/agent/v1/tasks"]: {
       post: {
         summary: "Start a research task",
         description:
-          "Answers a question by reading public pages, with sources, progress and cost. The budget in limits.max_cost_usd is reserved before the task starts; the unused part is returned when it ends. Requires an API key with a balance. Send Idempotency-Key to retry safely.",
+          "Answers a question by reading public pages, with sources, progress and cost. With an API key, HTTP reserves credits and settles actual cost. Without a key, x402 pays a fixed execution budget in limits.max_cost_usd. MCP start requires an API key and reserves credits, settling actual cost. Returns access_token for free status/cancel. For retries send the same Task-Token and Idempotency-Key.",
         operationId: "web_task_start",
-        security: bearer,
+        security: [{apiKey:[]},{}],
+        "x-x402": { protocol:"x402", pricing:"fixed execution budget", defaultPrice:"$0.10",price:"limits.max_cost_usd (default $0.10)" },
         parameters: [
           { name: "Idempotency-Key", in: "header", required: false, schema: { type: "string", maxLength: 200 }, description: "Same key and same request return the same task. Same key with a different request is refused with 409." },
         ],
@@ -132,7 +133,7 @@ function agentTaskPaths(): Record<string, unknown> {
         responses: {
           "202": { description: "Accepted. The Location header points at the task. Body: task_id, status, location, replayed." },
           "400": { description: "The request does not match the contract. Unknown fields and unsupported modes are refused." },
-          "402": { description: "The available balance does not cover the reserve." },
+          "402": { description: "Insufficient account credits, or x402 payment required without an API key." },
           "409": { description: "The Idempotency-Key was used with a different request." },
           ...unauthorized,
         },
@@ -193,6 +194,7 @@ export function openapi(c: Context<{ Bindings: Env }>): Record<string, unknown> 
         summary,
         description: about,
         operationId: tool,
+        security: [{apiKey:[]},{}],
         requestBody: {
           required: true,
           content: {
@@ -231,13 +233,13 @@ export function openapi(c: Context<{ Bindings: Env }>): Record<string, unknown> 
       description:
         "Scrape any page or document to markdown, map and crawl whole sites, drive a real browser, " +
         "and search the web. " +
-        "Pay per call with a wallet and no account at all (x402, USDC on Base), or with an API key. " +
+        "Pay per call with a wallet and no account at all (x402, USDC on Base). MCP includes a 100-credit trial; further use requires an API key and credits. " +
         "POST any route unpaid and it answers 402 with the exact price of that call.",
       "x-mcp": `${base}/mcp`,
       "x-logo": { url: `${origin(c)}/icon-512.png`, altText: "oassis" },
     },
     servers: [{ url: base }],
-    components: { securitySchemes: { bearerAuth: { type: "http", scheme: "bearer", description: "An API key: Authorization: Bearer oas_…" } } },
+    components: { securitySchemes: { apiKey: {type:"http",scheme:"bearer",description:"Oassis API key. Shared account credits; 1 credit = $0.002."}, taskToken: { type: "apiKey", in:"header", name:"Task-Token", description: "Task-scoped access_token, not a customer API key. Status/cancel only." } } },
     /** Where a person goes. The rest of this document is for whatever is reading it. */
     externalDocs: { description: "oassis", url: SITE },
     paths,
@@ -269,7 +271,8 @@ export function llmsTxt(c: Context<{ Bindings: Env }>): string {
     "",
     "- **Wallet (no account):** POST any endpoint below. It answers `402` with the price of that",
     "  exact call in the `PAYMENT-REQUIRED` header, in USDC on Base. Pay it and repeat the call.",
-    "- **API key:** `Authorization: Bearer oas_…`, charged against a prepaid balance.",
+    "- **MCP:** 100 trial credits for scrape/map. Use a Bearer API key for all paid tools and further use.",
+    "- **Account credits:** 1 credit = $0.002. Verified accounts receive 1,000 welcome credits once. Buy 2,500 / 10,000 / 25,000 credits for $5 / $20 / $50, once or monthly. HTTP accepts the same API key.",
     "- Nothing is charged for work that did not happen: a failure refunds, and an unpaid",
     "  challenge is a quote, not a charge.",
     "",
@@ -293,18 +296,18 @@ export function llmsTxt(c: Context<{ Bindings: Env }>): string {
   lines.push("## Agent tasks");
   lines.push("");
   lines.push(
-    "A research task answers a question from public pages, with sources, progress and cost. Tasks need an API key with a balance: the budget is reserved when the task starts, and the unused part is returned when it ends.",
+    "A research task answers a question from public pages, with sources, progress and cost. Tasks over MCP require an API key and sufficient credits. HTTP start uses x402 for a fixed execution budget; status/cancel use Task-Token and are free.",
   );
   lines.push("");
   lines.push(`- POST ${base}/agent/v1/tasks: start a task (202, with a Location header)`);
   lines.push(`- GET ${base}/agent/v1/tasks/{task_id}: read status, sources, result and billing`);
-  lines.push(`- POST ${base}/agent/v1/tasks/{task_id}/cancel: stop a task and return the unused budget`);
+  lines.push(`- POST ${base}/agent/v1/tasks/{task_id}/cancel: stop a task (free with Task-Token; no automatic on-chain refund)`);
   lines.push("- MCP tools: web_task_start, web_task_status, web_task_cancel");
   lines.push("");
 
   lines.push("## MCP");
   lines.push("");
-  lines.push(`Streamable HTTP at \`${base}/mcp\`. Every tool works without a key, except \`web_search_exa\`, which is paid.`);
+  lines.push(`Streamable HTTP at \`${base}/mcp\`. MCP includes 100 trial credits for scrape and map. Other tools require an API key; verified accounts receive 1,000 welcome credits.`);
   lines.push("");
   lines.push("## Machine-readable");
   lines.push("");

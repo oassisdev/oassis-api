@@ -71,7 +71,7 @@ export interface Deps {
   plan(doc: TaskDocument): Promise<Plan | null>;
   search(query: string, maxExaMicros: number): Promise<SearchOutcome>;
   read(url: string): Promise<{ ok: true; markdown: string } | { ok: false; error: string }>;
-  synthesize(doc: TaskDocument): Promise<TaskResult | null>;
+  synthesize(doc: TaskDocument): Promise<{ result: TaskResult } | { refusal: string }>;
   /** Re-reads the cancel request from storage, so a cancel that arrives during a step is seen before the next paid call. */
   refreshCancel(doc: TaskDocument): Promise<void>;
 }
@@ -255,18 +255,19 @@ async function finish(doc: TaskDocument, deps: Deps, forced?: "cancelled"): Prom
 
   doc.inflight = { op: "synthesis", micros: CLIENT.synthesisMicros, detail: "final answer" };
   await deps.checkpoint(doc);
-  const raw = await deps.synthesize(doc);
-  charge(doc, "synthesis", CLIENT.synthesisMicros, doc.steps, raw !== null, raw ? "answer" : "no valid answer");
+  const answer = await deps.synthesize(doc);
+  const usable = "result" in answer;
+  charge(doc, "synthesis", CLIENT.synthesisMicros, doc.steps, usable, usable ? "answer" : answer.refusal);
   doc.inflight = null;
 
-  if (!raw) {
-    doc.missing.push("synthesis_invalid");
+  if (!("result" in answer)) {
+    doc.missing.push(`synthesis_invalid: ${answer.refusal}`);
     doc.status = "partial";
     doc.error_code = "insufficient_evidence";
     return true;
   }
 
-  const verified = verifyResult(raw, doc.sources);
+  const verified = verifyResult(answer.result, doc.sources);
   doc.dropped_findings = verified.dropped;
   doc.result = verified.result;
   doc.missing = [...doc.missing, ...verified.result.missing];

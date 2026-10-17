@@ -11,14 +11,14 @@ import {
 
 describe("prices", () => {
   it("one output costs a render, and json costs the model", () => {
-    expect(scrapePrice(["markdown"])).toBe(1_000);
+    expect(scrapePrice(["markdown"])).toBe(2_000);
     expect(scrapePrice(["json"])).toBe(5_000);
     expect(scrapePrice(["pdf"])).toBe(2_000);
   });
 
   it("formats add up, and a repeated one is not billed twice", () => {
-    expect(scrapePrice(["markdown", "links"])).toBe(2_000);
-    expect(scrapePrice(["markdown", "markdown"])).toBe(1_000);
+    expect(scrapePrice(["markdown", "links"])).toBe(4_000);
+    expect(scrapePrice(["markdown", "markdown"])).toBe(2_000);
   });
 
   it("stays above what a render is worth", () => {
@@ -30,11 +30,11 @@ describe("prices", () => {
   });
 
   it("opening a session includes what is read while opening", () => {
-    expect(openPrice(["controls"])).toBe(PRICES.sessionOpen + 1_000);
+    expect(openPrice(["controls"])).toBe(PRICES.sessionOpen + 2_000);
   });
 
   it("acting costs per action plus what is read afterwards", () => {
-    expect(actPrice(3, ["controls"])).toBe(3 * PRICES.action + 1_000);
+    expect(actPrice(3, ["controls"])).toBe(3 * PRICES.action + 2_000);
     expect(actPrice(0, [])).toBe(0);
   });
 
@@ -47,10 +47,10 @@ describe("prices", () => {
   });
 
   it("the cost comes out of the request body", () => {
-    expect(priceOfRequest("scrape", { formats: ["markdown", "pdf"] })).toBe(3_000);
+    expect(priceOfRequest("scrape", { formats: ["markdown", "pdf"] })).toBe(4_000);
     expect(priceOfRequest("session", {})).toBe(openPrice(["controls"]));
     expect(priceOfRequest("act", { actions: [1, 2], formats: ["controls"] } as never)).toBe(
-      2 * PRICES.action + 1_000,
+      2 * PRICES.action + 2_000,
     );
   });
 

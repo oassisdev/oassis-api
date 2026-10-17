@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Hono } from "hono";
-import { TRACE_CAP, TRACE_DAYS, mountTraceLog, pruneTraces, recordTrace, type Trace } from "../src/traces";
+import { TRACE_DAYS, mountTraceLog, pruneTraces, recordTrace, type Trace } from "../src/traces";
 import { privacyPage } from "../src/legal";
 import type { Context } from "hono";
 import type { Env } from "../src/types";
@@ -37,16 +37,13 @@ describe("the call log", () => {
     expect(sql.join(" ")).toContain("INSERT INTO traces");
   });
 
-  /** The previous project's log reached 567 MB. Both ceilings have to be real. */
-  it("is bounded by rows and by age", async () => {
+  it("retains 30 days without deleting younger calls by row count", async () => {
     const { env, sql, binds } = db();
     await pruneTraces(env);
-    const all = sql.join(" ");
-    expect(all).toContain("DELETE FROM traces WHERE id <=");
-    expect(all).toContain("DELETE FROM traces WHERE at <");
-    expect(binds[0]).toEqual([TRACE_CAP]);
-    const cutoff = binds[1]?.[0] as number;
-    expect(Date.now() - cutoff).toBeGreaterThanOrEqual(TRACE_DAYS * 86_400_000 - 1000);
+    expect(TRACE_DAYS).toBe(30);
+    expect(sql).toEqual(["DELETE FROM traces WHERE at < ?1"]);
+    const cutoff = binds[0]?.[0] as number;
+    expect(Math.abs(Date.now() - cutoff - 30 * 86_400_000)).toBeLessThan(1000);
   });
 
   it("never lets a broken log break the call it is logging", async () => {
@@ -80,7 +77,7 @@ describe("the call log", () => {
       env: { BASE_URL: "https://api.oassis.dev" },
     } as unknown as Context<{ Bindings: Env }>);
     expect(html).toContain("request log");
-    expect(html).toContain(TRACE_CAP.toLocaleString("en"));
+    expect(html).toContain("without a row-count limit");
     expect(html).toContain(String(TRACE_DAYS));
   });
 });

@@ -13,19 +13,17 @@
 
 import { Hono, type Context } from "hono";
 import {
-  accountForKey,
-  charge,
   credit,
+  charge,
+  requestAccount,
   jobOwner,
-  openFreeSessions,
-  openSessions,
   registerJob,
   closeSession,
   registerSession,
   sessionAccess,
   sessionOwner,
 } from "./billing/accounts";
-import { PRICES, inDollars, priceOfRequest } from "./billing/prices";
+import { PRICES, priceOfRequest } from "./billing/prices";
 import {
   LIGHT_FORMATS,
   actRequest,
@@ -42,13 +40,17 @@ import { read, scrape } from "./scrape";
 import { QuickActionsRenderer } from "./quick-actions";
 import { CachedRenderer } from "./cached-renderer";
 import { cacheable } from "./cache";
-import { checkFreeCall, explainRefusal, FREE_MAX_AGE_MS } from "./free-tier";
+
 import { origin } from "./http";
 import { servedText } from "./landing";
+import { checkFreeCall } from "./free-tier";
 import { PROMPTS, RESOURCES, freeLine, readResource } from "./mcp-resources";
 import { VERSION } from "./version";
 import { feedbackRequest, storeFeedback } from "./feedback";
-import { cancelTask, getTask, startTask } from "./agent/service";
+import { CREDIT_GUIDE, creditsFor } from "./billing/credits";
+import { trialIdentity, takeTrial, refundTrial } from "./billing/trial";
+import { startTask, getTask, cancelTask } from "./agent/service";
+import { publicTask } from "./agent/public-access";
 import { taskRequest } from "./agent/request";
 import { mapSite } from "./map";
 import type { Env } from "./types";
@@ -112,7 +114,7 @@ const TOOLS = [
       openWorldHint: true,
     },
     description:
-      "Processes a page and returns every output you ask for at once: markdown, html, links, screenshot, PDF, accessibility tree, elements by selector, AI-structured data, and `controls` (what can be clicked). One call, and a partial failure does not void the rest. From $0.001 per output. A url pointing at a PDF, Word, Excel or CSV file is converted to markdown instead, with no browser, for $0.002. Reference for the oassis API: https://oassis.dev/openapi.json",
+      "Processes a page and returns every output you ask for at once: markdown, html, links, screenshot, PDF, accessibility tree, elements by selector, AI-structured data, and `controls` (what can be clicked). One call, and a partial failure does not void the rest. From 1 credit ($0.002) per output. A url pointing at a PDF, Word, Excel or CSV file is converted to markdown instead, with no browser, for $0.002. Reference for the oassis API: https://oassis.dev/openapi.json",
     inputSchema: fichaDe(scrapeRequest),
   },
   {
@@ -151,7 +153,7 @@ const TOOLS = [
       openWorldHint: true,
     },
     description:
-      "A batch OF SCRAPES: reads a list of urls YOU give it (2 to 50, from any sites) and returns a jobId. It discovers nothing on its own — for that use web_crawl. Charged up front per url; urls that fail and urls served from the cache are refunded. Poll it with web_batch_status.",
+      "A batch OF SCRAPES: reads a list of urls YOU give it (2 to 50, from any sites) and returns a jobId. It discovers nothing on its own — for that use web_crawl. API key and credits required. Poll it with web_batch_status.",
     inputSchema: fichaDe(batchRequest, { narrow: { formats: FORMATOS_LIGEROS } }),
   },
   {
@@ -164,7 +166,7 @@ const TOOLS = [
       openWorldHint: false,
     },
     description:
-      "Checks a batch of scrapes: status, how many are done, and the results. Free. Pass `cancel: true` to stop it and get the urls it never read refunded.",
+      "Checks a batch of scrapes: status, how many are done, and the results. Free for the owning account. Pass `cancel: true` to stop it.",
     inputSchema: {
       type: "object",
       properties: {
@@ -185,7 +187,7 @@ const TOOLS = [
       openWorldHint: true,
     },
     description:
-      "Every url of a site, fast and cheap: its sitemap plus, optionally, the links on the page. Use it BEFORE crawling, to see what is there and decide what is worth reading. $0.001 with `includePage: false` (no browser at all), $0.0015 with the page. Reference for the oassis API: https://oassis.dev/openapi.json",
+      "Every url of a site, fast and cheap: its sitemap plus, optionally, the links on the page. Use it BEFORE crawling, to see what is there and decide what is worth reading. 1 credit ($0.002) with `includePage: false` (no browser at all), 1.5 credits ($0.003) with the page. Reference for the oassis API: https://oassis.dev/openapi.json",
     inputSchema: fichaDe(mapRequest),
   },
   {
@@ -198,7 +200,7 @@ const TOOLS = [
       openWorldHint: true,
     },
     description:
-      "Follows a site's links and reads every page. Returns a jobId; poll it with web_crawl_status. Charged up front for the pages it is allowed to read (`limit`), and the pages it never reads are refunded. Use web_map first if you only need the urls. Reference for the oassis API: https://oassis.dev/openapi.json",
+      "Follows a site's links and reads every page. Returns a jobId; poll it with web_crawl_status. API key and credits required; `limit` controls the maximum pages charged. Use web_map first if you only need the urls. Reference for the oassis API: https://oassis.dev/openapi.json",
     inputSchema: fichaDe(crawlRequest, { narrow: { formats: FORMATOS_LIGEROS } }),
   },
   {
@@ -211,7 +213,7 @@ const TOOLS = [
       openWorldHint: false,
     },
     description:
-      "Checks a crawl: status, pages read, discovered and still queued, and the pages themselves. Free. Pass `cancel: true` to stop it and get the unread pages refunded.",
+      "Checks a crawl: status, pages read, discovered and still queued, and the pages themselves. Free for the owning account. Pass `cancel: true` to stop it.",
     inputSchema: {
       type: "object",
       properties: {
@@ -258,7 +260,7 @@ const TOOLS = [
       openWorldHint: true,
     },
     description:
-      "Starts a research task: a question answered by reading public pages, with sources, progress and cost. Needs an API key with a balance; the budget is reserved first and the unused part is returned when the task ends. Returns a task id: check it with web_task_status.",
+      "Starts a research task: a question answered by reading public pages, with sources, progress and cost. Requires an API key and credits. The maximum budget is reserved, actual execution cost is charged, and unused credits are released. Returns a task id: check it with web_task_status.",
     inputSchema: fichaDe(taskRequest),
   },
   {
@@ -273,7 +275,7 @@ const TOOLS = [
     description: "Returns a task's status, progress, sources, limitations, result and billing. Only your own tasks.",
     inputSchema: {
       type: "object",
-      properties: { id: { type: "string", description: "The task id, from web_task_start." } },
+      properties: { id: { type: "string", description: "The task id, from web_task_start." }, access_token: {type:"string",description:"Task-scoped access token returned by web_task_start; not an API key."} },
       required: ["id"],
     },
   },
@@ -287,10 +289,10 @@ const TOOLS = [
       openWorldHint: false,
     },
     description:
-      "Stops a task: no new operations start and the unused budget is returned. An operation already running cannot always be stopped remotely; it is charged as it completes. Cancelling a finished task changes nothing.",
+      "Stops a task using its owning API key, or its legacy access_token. No new operations start. Cancellation is free; unused account credit reservations are released. Cancelling a finished task changes nothing.",
     inputSchema: {
       type: "object",
-      properties: { id: { type: "string", description: "The task id, from web_task_start." } },
+      properties: { id: { type: "string", description: "The task id, from web_task_start." }, access_token: {type:"string",description:"Task-scoped access token returned by web_task_start; not an API key."} },
       required: ["id"],
     },
   },
@@ -361,8 +363,8 @@ mcp.post("/mcp", async (c) => {
           },
           instructions: [
             "Web extraction and browser control for agents.",
-            "You can use every tool with no key and no account, except web_search_exa, which is paid.",
-            "After that, send an API key in `Authorization: Bearer oas_…`, or pay per call with a wallet over the HTTP API (x402, USDC on Base) with no account at all.",
+            "MCP includes a one-time 100-credit trial for scrape and map. An API key unlocks all tools using your shared balance. Verified accounts receive 1,000 welcome credits.",
+            "HTTP operations use x402 (USDC), with no account or API key.",
             "To read a page use web_scrape; to fill in or click something, open a session with web_session_open and act with web_act; to find urls use web_map before paying to read them.",
           ].join(" "),
         },
@@ -442,7 +444,7 @@ mcp.get("/mcp", (c) =>
     {
       transport: "MCP over JSON-RPC on POST /mcp (stateless)",
       protocolVersion: PROTOCOL,
-      auth: "Authorization: Bearer oas_…",
+      auth: "optional Bearer API key; required beyond trial and for paid tools",
       /**
        * A demo, not a plan: enough to see whether this is any good, shaped by the first
        * thirty seconds rather than by what is cheap. Anyone who wants more can pay per call
@@ -450,8 +452,8 @@ mcp.get("/mcp", (c) =>
        */
       free: {
         forWho: "MCP clients, with no key and no account",
-        allowance: "every tool, except web_search_exa, which is paid",
-        limits: "none per call or per day; 3 browser sessions open at once across keyless callers",
+        allowance: "100 trial credits for scrape and map only; API key and credits for other tools",
+        limits: "100 credits per trial identity; scrape and map only",
       },
       tools: TOOLS.map((t) => t.name),
     },
@@ -471,6 +473,11 @@ async function callTool(
     return c.json(rpcError(id, -32602, `There is no tool called \`${name}\`.`));
   }
 
+  const key = await requestAccount(c.env.BILLING,c.req.raw.headers);
+  if(key === 'invalid')return c.json(toolResult(id,'Invalid or revoked API key. '+CREDIT_GUIDE,true));
+  const trialTools = ['web_scrape','web_map','web_feedback'];
+  const lifecycle = ['web_batch_status','web_crawl_status','web_session_close','web_task_status','web_task_cancel'];
+  if(!key && !trialTools.includes(name) && !lifecycle.includes(name))return c.json(toolResult(id,'api_key_required: '+CREDIT_GUIDE,true));
   /** Checking or cancelling a batch is free, same as a crawl. */
   if (name === "web_batch_status") {
     const jobId = String(args.jobId ?? "");
@@ -519,25 +526,13 @@ async function callTool(
   }
 
   if (name === "web_task_start" || name === "web_task_status" || name === "web_task_cancel") {
-    const who = await callerAccount(c);
-    if (who === "invalid") return c.json(toolResult(id, "Invalid or revoked key.", true));
-    if (!who) {
-      return c.json(toolResult(id, "Agent tasks need an API key with a balance: send `Authorization: Bearer oas_…`.", true));
-    }
     if (name === "web_task_start") {
-      const r = await startTask(c.env, { account: who, body: args, idempotencyKey: null, baseUrl: c.env.BASE_URL });
-      if (!r.ok) return c.json(toolResult(id, `${r.error.error}: ${r.error.message}`, true));
-      return c.json(toolResult(id, JSON.stringify({ task_id: r.taskId, status: r.status, location: r.location })));
+      const r=await startTask(c.env,{account:key!.id,body:args,idempotencyKey:typeof args.idempotency_key==='string'?args.idempotency_key:null,baseUrl:c.env.BASE_URL});
+      return c.json(toolResult(id,JSON.stringify(r.ok?{...r,task_id:r.taskId,billing:{channel:'credits',pricing:'reserve maximum; charge actual cost; release unused credits'}}:r.error),!r.ok));
     }
-    const taskId = String(args.id ?? "");
-    if (name === "web_task_status") {
-      const out = await getTask(c.env, who, taskId);
-      if ("error" in out) return c.json(toolResult(id, `${out.error}: ${out.message}`, true));
-      return c.json(toolResult(id, JSON.stringify(out.body)));
-    }
-    const out = await cancelTask(c.env, who, taskId);
-    if ("error" in out) return c.json(toolResult(id, `${out.error}: ${out.message}`, true));
-    return c.json(toolResult(id, JSON.stringify(out.body)));
+    // Legacy task tokens still work for tasks started before the credit rollout.
+    const out=key ? (name==='web_task_cancel'?await cancelTask(c.env,key.id,String(args.id||'')):await getTask(c.env,key.id,String(args.id||''))) : await publicTask(c.env,String(args.id||''),String(args.access_token||''),name==='web_task_cancel');
+    return c.json(toolResult(id,JSON.stringify("body" in out?out.body:out),out.status>=400));
   }
 
   /** Reporting a bad answer is free, with or without a key. */
@@ -546,7 +541,7 @@ async function callTool(
     if (who === "invalid") return c.json(toolResult(id, "Invalid or revoked key.", true));
     const parsed = feedbackRequest.safeParse(args);
     if (!parsed.success) return c.json(toolResult(id, issuesText(parsed.error.issues), true));
-    if ((await storeFeedback(c.env, who, parsed.data, "mcp")) === "too_many") {
+    if ((await storeFeedback(c.env, who, parsed.data, "mcp", true)) === "too_many") {
       return c.json(toolResult(id, "Today's anonymous reports are used up. Send them tomorrow, or with an API key.", true));
     }
     return c.json(toolResult(id, "Logged. Thank you."));
@@ -595,74 +590,34 @@ async function callTool(
    * A key is charged to its balance. Without one the call is free over MCP, except search,
    * and `payer` stays null.
    */
-  const key = (c.req.header("authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
-  let payer: string | null = null;
-
-  if (key) {
-    const account = await accountForKey(c.env.BILLING, key);
-    if (!account) return c.json(toolResult(id, "Invalid or revoked key.", true));
-
-    if (route === "session") {
-      const open = await openSessions(c.env.BILLING, account.id);
-      if (open >= account.maxSessions) {
-        return c.json(
-          toolResult(
-            id,
-            `You already have ${open} open sessions, your account's maximum. Close one with web_session_close.`,
-            true,
-          ),
-        );
-      }
-    }
-
-    // Checked before charging: turning someone away after taking their money would be
-    // charging for a door we slammed ourselves.
-    if (route === "act") {
-      const denied = await notYours(c, sessionOf, account.id);
-      if (denied) return c.json(toolResult(id, denied, true));
-    }
-
-    const balance = await charge(c.env.BILLING, account.id, {
-      concept: `mcp:${name}`,
-      micros,
-      route: "/mcp",
-    });
-    if (balance === null) {
-      return c.json(
-        toolResult(
-          id,
-          `This call costs ${inDollars(micros)} and your balance is ${inDollars(account.balanceMicros)}. Top up to continue.`,
-          true,
-        ),
-      );
-    }
-    payer = account.id;
-  } else {
-    if (route === "search") {
-      return c.json(toolResult(id, explainRefusal("paid_search", inDollars(micros)), true));
-    }
-    const refusal = await checkFreeCall(
-      { userAgent: c.req.header("user-agent") },
-      {
-        tool: name,
-        url: typeof args.url === "string" ? args.url : undefined,
-        urls: Array.isArray(args.urls) ? args.urls.filter((u): u is string => typeof u === "string") : undefined,
-        sessionsOpen: route === "session" ? await openFreeSessions(c.env.BILLING) : 0,
-      },
-    );
-    if (refusal) return c.json(toolResult(id, explainRefusal(refusal, inDollars(micros)), true));
-
-    if (route === "act") {
-      const denied = await notYours(c, sessionOf, null);
-      if (denied) return c.json(toolResult(id, denied, true));
-    }
+  const payer: string | null = key?.id ?? null;
+  const trial = !key ? await trialIdentity(c.env,c.req.raw.headers) : null;
+  if(!key && !trial)return c.json(toolResult(id,'api_key_required: Trial identity unavailable. '+CREDIT_GUIDE,true));
+  const refusal=key ? null : await checkFreeCall({}, {tool:name,url:typeof args.url==='string'?args.url:undefined,urls:Array.isArray(args.urls)?args.urls.filter((u):u is string=>typeof u==='string'):undefined});
+  if(refusal)return c.json(toolResult(id,'This site disallows automated access in robots.txt.',true));
+  if (route === 'act') {
+    const denied=await notYours(c,sessionOf,payer);
+    if(denied)return c.json(toolResult(id,denied,true));
   }
 
-  const finish = (text: string, isError = false) => c.json(toolResult(id, text, isError));
+  if(key) {
+    const left=await charge(c.env.BILLING,key.id,{micros,concept:'MCP credits',route:name});
+    if(left===null)return c.json(toolResult(id,JSON.stringify({error:'insufficient_credits',required_credits:creditsFor(micros),available_credits:creditsFor(key.balanceMicros),message:CREDIT_GUIDE}),true));
+    c.set('payer',{gate:'key',account:key,identity:key.id,chargedMicros:micros});
+  } else if(!await takeTrial(c.env,trial!,micros))return c.json(toolResult(id,'mcp_trial_exhausted: Your 100 trial credits cannot cover this operation. '+CREDIT_GUIDE,true));
+  let refunded=0;
+  const finish = (text: string, isError = false) => {
+    const result=toolResult(id,text,isError);
+    return c.json({...result,result:{...result.result,_meta:{'oassis/credits':{charged:creditsFor(micros-refunded),remaining:key?creditsFor(key.balanceMicros-micros+refunded):null,recharge_url:'https://oassis.dev/dashboard/billing'}}}});
+  };
 
   /** Gives back the whole charge, or `parte` of it, when the work did not happen. Keyless calls have nothing to give back. */
   const giveBack = async (reason: string, parte?: number) => {
-    if (payer) await credit(c.env.BILLING, payer, parte ?? micros, reason).catch(() => null);
+    const amount=Math.max(0,Math.min(parte ?? micros,micros-refunded));
+    if(!amount)return;
+    if (payer) await credit(c.env.BILLING, payer, amount, reason);
+    else if(trial)await refundTrial(c.env,trial,amount);
+    refunded+=amount;
   };
 
   /**
@@ -688,9 +643,7 @@ async function callTool(
        * swarm asking for the same popular pages costing one render or thousands, and an hour
        * is no worse than what a paying caller asks for with `maxAge` anyway.
        */
-      const req = payer
-        ? parsed.data
-        : { ...parsed.data, maxAge: Math.max(parsed.data.maxAge ?? 0, FREE_MAX_AGE_MS) };
+      const req = parsed.data;
       const provider = new QuickActionsRenderer(c.env.BROWSER);
       const res = await read(
         req,
@@ -754,6 +707,7 @@ async function callTool(
         }),
         headers: { "content-type": "application/json" },
       });
+      if(!res.ok)await giveBack("refund: batch did not start");
       return finish(await res.text(), !res.ok);
     }
 
@@ -792,6 +746,7 @@ async function callTool(
         }),
         headers: { "content-type": "application/json" },
       });
+      if(!res.ok)await giveBack("refund: crawl did not start");
       return finish(await res.text(), !res.ok);
     }
 
@@ -830,10 +785,8 @@ async function callTool(
 
 /** The account behind the key, `null` when none was sent, "invalid" when it is bad. */
 async function callerAccount(c: Context<{ Bindings: Env }>): Promise<string | null | "invalid"> {
-  const key = (c.req.header("authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
-  if (!key) return null;
-  const account = await accountForKey(c.env.BILLING, key);
-  return account ? account.id : "invalid";
+  const key=await requestAccount(c.env.BILLING,c.req.raw.headers);
+  return key === "invalid" ? "invalid" : key?.id ?? null;
 }
 
 /**

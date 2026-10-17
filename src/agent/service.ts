@@ -18,6 +18,7 @@ export type ServiceError = { status: number; error: string; message: string; det
 
 export interface StartInput {
   account: string;
+  deferKick?: boolean;
   body: unknown;
   idempotencyKey: string | null;
   baseUrl: string;
@@ -120,7 +121,7 @@ export async function startTask(env: Env, input: StartInput): Promise<StartResul
     return again && again.request_hash === hash ? started(input, again.id, again.status, false) : conflict();
   }
 
-  await kick(env, taskId);
+  if (!input.deferKick) await kick(env, taskId);
   return started(input, taskId, "queued", true);
 }
 

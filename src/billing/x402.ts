@@ -24,9 +24,10 @@ import { actDoc, batchDoc, crawlDoc, doc, mapDoc, searchDoc, sessionDoc } from "
 import { priceOfRequest, inDollars } from "./prices";
 import { priceOfSearch } from "../search/exa";
 import { searchRequest } from "../schema";
+import { taskRequest } from "../agent/request";
 import type { Env } from "../types";
 
-type Route = "scrape" | "session" | "act" | "batch" | "map" | "crawl" | "search";
+type Route = "scrape" | "session" | "act" | "batch" | "map" | "crawl" | "search" | "task";
 
 /**
  * The url segment each route answers on. It is not always the route's name — the batch
@@ -41,6 +42,7 @@ const SEGMENT: Record<Route, string> = {
   map: "map",
   crawl: "crawl",
   search: "search",
+  task: "tasks",
 };
 
 /** What a search costs is Exa's to say, read from its own challenge on every call. */
@@ -55,6 +57,7 @@ const SMALLEST_CALL: Record<Route, Record<string, unknown>> = {
   map: { includePage: false },
   crawl: { limit: 1 },
   search: { query: "", limit: 10 },
+  task: {task:"Research public pages"},
 };
 
 const BASE = "eip155:8453";
@@ -81,6 +84,10 @@ function priceFor(route: Route) {
      */
     if (Object.keys(body).length === 0) body = SMALLEST_CALL[route];
 
+    if (route === "task") {
+      const parsed=taskRequest.safeParse(body);
+      return inDollars(Math.round((parsed.success?parsed.data.limits.max_cost_usd:0.1)*1e6));
+    }
     if (route === "search") {
       // Asking Exa costs nothing, and its answer is the only honest price for this call.
       try {
@@ -136,7 +143,7 @@ export function x402(env: Env): MiddlewareHandler<{ Bindings: Env }> | null {
         body: {
           success: false,
           error: "payment_required",
-          message: "Pay with a wallet (x402, USDC) or use an API key: `Authorization: Bearer oas_…`.",
+          message: "Pay per call with x402 (USDC). No account or API key is needed.",
           price: await priceFor(route)(ctx),
           docs: "/web/v1/scrape",
         },
@@ -152,6 +159,7 @@ export function x402(env: Env): MiddlewareHandler<{ Bindings: Env }> | null {
       map: mapDoc,
       crawl: crawlDoc,
       search: searchDoc,
+      task: ()=>({endpoint:"POST /agent/v1/tasks",access:"x402",pricing:"fixed execution budget",default_price:"$0.10",status:"GET /agent/v1/tasks/{id} with Task-Token",cancel:"POST /agent/v1/tasks/{id}/cancel with Task-Token"}),
     };
 
     const DESCRIPTIONS: Record<Route, string> = {
@@ -162,6 +170,7 @@ export function x402(env: Env): MiddlewareHandler<{ Bindings: Env }> | null {
       map: "Lists a site's urls, from its sitemap and its page.",
       crawl: "Follows a site's links and reads every page, as a job.",
       search: "Web search through Exa's index, at Exa's own price.",
+      task: "Research public pages with sources. Pay a fixed execution budget via x402; no API key.",
     };
 
     // Every route in both shapes: `/web/v1/x` on the umbrella (api.oassis.dev)
@@ -169,14 +178,14 @@ export function x402(env: Env): MiddlewareHandler<{ Bindings: Env }> | null {
     // table or the 402 challenge would not be issued on one of them.
     const routes: Parameters<typeof paymentMiddleware>[0] = {};
     for (const route of Object.keys(SEGMENT) as Route[]) {
-      for (const path of [`/web/v1/${SEGMENT[route]}`, `/v1/${SEGMENT[route]}`]) {
+      for (const path of (route === "task" ? ["/agent/v1/tasks"] : [`/web/v1/${SEGMENT[route]}`, `/v1/${SEGMENT[route]}`])) {
         const cfg = {
           ...common(route),
           description: DESCRIPTIONS[route],
           // What makes the endpoint discoverable in Coinbase's registry, and through it
           // in the rest of the x402 layer. See bazaar.ts for why the examples are
           // written by hand.
-          extensions: { bazaar: BAZAAR[route] },
+          ...(route === "task" ? {} : { extensions: { bazaar: BAZAAR[route] } }),
         };
         routes[`POST ${path}`] = cfg;
 

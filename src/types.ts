@@ -95,6 +95,18 @@ export type BrowserBinding = BrowserWorker & {
 
 export interface Env {
   BASE_URL: string;
+  /** Optional website authentication; never required for MCP or x402. */
+  AUTH_SECRET?: string;
+  RESEND_API_KEY?: string;
+  BILLING_EMAIL_FROM?: string;
+  STRIPE_SECRET_KEY?: string;
+  STRIPE_PAYMENTS_ENABLED?: string;
+  STRIPE_TAX_ENABLED?: string;
+  STRIPE_WEBHOOK_SECRET?: string;
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
+  GITHUB_CLIENT_ID?: string;
+  GITHUB_CLIENT_SECRET?: string;
   SESSIONS: DurableObjectNamespace;
   /** Batch jobs: work that does not fit in one request. */
   JOBS: DurableObjectNamespace;

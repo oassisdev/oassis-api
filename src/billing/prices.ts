@@ -22,13 +22,13 @@ import type { ScrapeRequest } from "../schema";
  * monthly fee and no balance that expires.
  */
 export const PER_FORMAT: Record<Format, number> = {
-  html: 1_000,
-  markdown: 1_000,
-  links: 1_000,
-  elements: 1_000,
-  controls: 1_000,
-  accessibility: 1_000,
-  screenshot: 1_000,
+  html: 2_000,
+  markdown: 2_000,
+  links: 2_000,
+  elements: 2_000,
+  controls: 2_000,
+  accessibility: 2_000,
+  screenshot: 2_000,
   // A PDF is a heavier render and a much bigger response.
   pdf: 2_000,
   // Carries a model call, which is the expensive part.
@@ -67,7 +67,7 @@ export function documentPrice(): number {
 export function scrapePrice(formats: Format[], cached: Format[] = []): number {
   const hits = new Set(cached);
   return [...new Set(formats)].reduce(
-    (total, f) => total + (hits.has(f) ? PRICES.cacheHit : PER_FORMAT[f] ?? 1_000),
+    (total, f) => total + (hits.has(f) ? PRICES.cacheHit : PER_FORMAT[f] ?? 2_000),
     0,
   );
 }
@@ -110,14 +110,14 @@ export function inDollars(micros: number): string {
  * Any price the gate can quote has to clear this, which is why it is a floor on the
  * prices themselves and not a surcharge added at the gate: both doors charge the same.
  */
-export const MIN_CHARGE = 1_000;
+export const MIN_CHARGE = 2_000;
 
 /**
  * Price of a map. A sitemap is plain HTTP with no browser involved, so this is one
  * render when the page is included, and the floor when it is not.
  */
 export function mapPrice(includePage: boolean): number {
-  return includePage ? 1_500 : MIN_CHARGE;
+  return includePage ? 3_000 : MIN_CHARGE;
 }
 
 /**

@@ -70,13 +70,20 @@ function extractJson(raw: unknown): unknown {
   return null;
 }
 
-async function askOnce<T>(ai: Ai, model: string, messages: { role: string; content: string }[], schema: object, parse: (v: unknown) => T | null, maxTokens: number): Promise<T | null> {
+/** Why an answer was not usable, in words that are safe to show: no secret or provider text. */
+export type Refusal = "call_failed" | "no_json" | "schema_mismatch" | "timeout";
+
+async function askOnce<T>(ai: Ai, model: string, messages: { role: string; content: string }[], schema: object, parse: (v: unknown) => T | null, maxTokens: number): Promise<{ value: T } | { refusal: Refusal }> {
+  let raw: unknown;
   try {
-    const raw = await ai.run(model, { messages, max_tokens: maxTokens, response_format: { type: "json_schema", json_schema: schema } });
-    return parse(extractJson(raw));
+    raw = await ai.run(model, { messages, max_tokens: maxTokens, response_format: { type: "json_schema", json_schema: schema } });
   } catch {
-    return null;
+    return { refusal: "call_failed" };
   }
+  const json = extractJson(raw);
+  if (json === null) return { refusal: "no_json" };
+  const value = parse(json);
+  return value === null ? { refusal: "schema_mismatch" } : { value };
 }
 
 /** One planning call. One attempt: a bad reply is a charged, failed step, not a second charge. */
@@ -98,26 +105,28 @@ export async function planNextStep(ai: Ai, doc: TaskDocument, model = DEFAULT_MO
       ].join("\n\n"),
     },
   ];
-  return askOnce(ai, model, messages, planJsonSchema, (v) => {
+  const out = await askOnce(ai, model, messages, planJsonSchema, (v) => {
     const p = planSchema.safeParse(normalizePlan(v));
     return p.success ? (p.data as Plan) : null;
   }, PLAN_MAX_TOKENS);
+  return "value" in out ? out.value : null;
 }
 
 /** The final answer. One attempt, like planning. */
-export async function synthesize(ai: Ai, doc: TaskDocument, model = DEFAULT_MODEL): Promise<TaskResult | null> {
+export async function synthesize(ai: Ai, doc: TaskDocument, model = DEFAULT_MODEL): Promise<{ result: TaskResult } | { refusal: Refusal }> {
   const messages = [
     {
       role: "system",
       content: [
         SYSTEM,
-        "Answer the task from the evidence only. Each claim is one complete sentence that the cited sources state; do not add conclusions they do not state. Every finding cites the source ids it rests on. List in missing what the task asked for and the evidence does not settle.",
+        "Answer the task from the evidence only, in the language of the task. Keep it short: a summary of at most 600 characters, at most 8 findings, and at most 5 missing items. Each claim is one complete sentence that the cited sources state; do not add conclusions they do not state. Every finding cites the source ids it rests on. List in missing what the task asked for and the evidence does not settle.",
       ].join("\n"),
     },
     { role: "user", content: `Task: ${doc.task}\n\nEvidence:\n${evidenceContext(doc)}` },
   ];
-  return askOnce(ai, model, messages, resultJsonSchema, (v) => {
+  const out = await askOnce(ai, model, messages, resultJsonSchema, (v) => {
     const p = resultSchema.safeParse(v);
     return p.success ? p.data : null;
   }, ANSWER_MAX_TOKENS);
+  return "value" in out ? { result: out.value } : out;
 }

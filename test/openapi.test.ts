@@ -139,7 +139,7 @@ describe("llms.txt", () => {
 
   it("explains both ways to pay, and points at the machine-readable one", () => {
     expect(text).toContain("402");
-    expect(text).toContain("Authorization: Bearer oas_");
+    expect(text).toContain("100 trial credits for scrape/map");
     expect(text).toContain("https://api.oassis.dev/openapi.json");
     expect(text).toContain("https://api.oassis.dev/mcp");
   });
@@ -150,13 +150,13 @@ describe("llms.txt", () => {
 });
 
 describe("agent task paths", () => {
-  it("are documented, bearer-authenticated, and carry no x402 quote", () => {
+  it("document x402 start and task-token access without API keys", () => {
     const spec = openapi(ctx()) as { paths: Record<string, any>; components: { securitySchemes: Record<string, unknown> } };
     const start = spec.paths["/agent/v1/tasks"];
     expect(start?.post.operationId).toBe("web_task_start");
-    expect(start?.post.security).toEqual([{ bearerAuth: [] }]);
-    expect(start?.post["x-x402"]).toBeUndefined();
-    expect(spec.components.securitySchemes.bearerAuth).toBeDefined();
+    expect(start?.post.security).toEqual([{apiKey:[]},{}]);
+    expect(start?.post["x-x402"]).toBeDefined();
+    expect(spec.components.securitySchemes.taskToken).toBeDefined();
     expect(Object.keys(spec.paths).some((p) => p.endsWith("/agent/v1/tasks/{task_id}/cancel"))).toBe(true);
   });
 });

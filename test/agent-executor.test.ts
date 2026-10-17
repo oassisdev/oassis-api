@@ -55,7 +55,10 @@ function world(opts: {
     },
     read: async (url) =>
       opts.pageOk === false ? { ok: false, error: "page refused" } : { ok: true, markdown: `Pricing for ${url}. Plan costs 10 USD.` },
-    synthesize: async () => opts.answer === undefined ? { summary: "Summary", findings: [{ claim: "A costs 10 USD", source_ids: ["s1"] }], missing: [] } : opts.answer,
+    synthesize: async () => {
+      const answer = opts.answer === undefined ? { summary: "Summary", findings: [{ claim: "A costs 10 USD", source_ids: ["s1"] }], missing: [] } : opts.answer;
+      return answer ? { result: answer } : { refusal: "schema_mismatch" };
+    },
   };
   return { deps };
 }
@@ -246,7 +249,7 @@ describe("an interrupted answer", () => {
       inflight: { op: "synthesis", micros: 8_000, detail: "final answer" },
       spent_micros: 0,
     });
-    const counted = { ...deps, synthesize: async () => { calls += 1; return null; } };
+    const counted = { ...deps, synthesize: async () => { calls += 1; return { refusal: "call_failed" }; } };
     expect(await runStep(d, counted)).toBe(true);
     expect(calls).toBe(0);
     expect(d.spent_micros).toBe(8_000);

@@ -12,16 +12,17 @@
  * is how an agent learns what it has to pay.
  */
 
+import { prepaidIdentity } from "../site-payments";
+import { ensureBilling } from "./stripe";
 import type { Context, MiddlewareHandler } from "hono";
 import {
-  accountForKey,
-  charge,
   recordWalletPayment,
-  openSessions,
+  requestAccount,
   sessionAccess,
   sessionOwner,
   type Account,
 } from "./accounts";
+import { CREDIT_GUIDE, creditsFor } from "./credits";
 import { inDollars, priceOfRequest } from "./prices";
 import { cacheable } from "../cache";
 import { cachedFormats } from "../cached-renderer";
@@ -121,6 +122,11 @@ export const billing: MiddlewareHandler<{ Bindings: Env }> = async (c, next) => 
     return gate ? await gate(c, async () => undefined) : next();
   }
   if (c.req.method !== "POST") return next();
+  const prepaid = c.req.header("x-oassis-payment") === "balance";
+  const keyAccount = await requestAccount(c.env.BILLING,c.req.raw.headers);
+  if(keyAccount === "invalid") return c.json({success:false,error:"invalid_api_key"},401);
+  const prepaidAccount = keyAccount?.id ?? (prepaid ? await prepaidIdentity(c.env,c.req.raw) : null);
+  if(prepaid && !prepaidAccount)return c.json({success:false,error:"verified_website_session_required"},401);
 
   // The body is read once here and kept: reading it again in the handler would
   // hand back an already-consumed stream.
@@ -150,8 +156,7 @@ export const billing: MiddlewareHandler<{ Bindings: Env }> = async (c, next) => 
      * status at or above 400.
      */
     const identified =
-      Boolean((c.req.header("authorization") ?? "").trim()) ||
-      Boolean(c.req.header("x-payment")) ||
+      prepaid || Boolean(keyAccount) || Boolean(c.req.header("x-payment")) ||
       Boolean(c.req.header("payment-signature"));
     const gate = identified ? null : x402(c.env);
     if (gate) return await gate(c, async () => undefined);
@@ -204,82 +209,22 @@ export const billing: MiddlewareHandler<{ Bindings: Env }> = async (c, next) => 
   } else {
     micros = priceOfRequest(route, body as never, await cacheHits(c, route, body));
   }
-  const key = (c.req.header("authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
-
-  let account: Account | null = null;
-  if (key) {
-    account = await accountForKey(c.env.BILLING, key);
-    if (!account) {
-      return c.json({ success: false, error: "unauthorized", message: "Invalid or revoked key." }, 401);
-    }
-  }
-
-  /**
-   * Whose session it is gets checked BEFORE charging. Doing it in the handler
-   * meant a caller who was turned away had already paid for the attempt, which is
-   * charging for a door we slammed ourselves.
-   *
-   * A session that is not yours answers exactly like one that does not exist — a
-   * 404 — so this cannot be used to discover which session ids are alive.
-   */
   if (route === "act") {
-    const sessionId = typeof body.sessionId === "string" ? body.sessionId : "";
-    const access = sessionAccess(await sessionOwner(c.env.BILLING, sessionId), account?.id ?? null);
-    if (access !== "ok") {
-      return c.json(
-        {
-          success: false,
-          error: "session_not_found",
-          message: "That session does not exist, is already closed, or is not yours.",
-        },
-        404,
-      );
-    }
+    const sessionId=typeof body.sessionId==='string'?body.sessionId:'';
+    const wallet=payerFromHeaders(c.req.raw.headers);
+    const access=sessionAccess(await sessionOwner(c.env.BILLING,sessionId),prepaidAccount||(wallet?walletIdentity(wallet):null));
+    if(access!=='ok')return c.json({success:false,error:'session_not_found'},404);
   }
-
-  if (account) {
-
-    if (route === "session") {
-      const open = await openSessions(c.env.BILLING, account.id);
-      if (open >= account.maxSessions) {
-        return c.json(
-          {
-            success: false,
-            error: "too_many_sessions",
-            message:
-              open === 1
-                ? "You already have one open session, your account's maximum. Close it with DELETE /web/v1/session/:id."
-                : `You already have ${open} open sessions, your account's maximum. Close one with DELETE /web/v1/session/:id.`,
-          },
-          429,
-        );
-      }
-    }
-
-    const balance = await charge(c.env.BILLING, account.id, {
-      concept: route,
-      micros,
-      route: new URL(c.req.url).pathname,
-    });
-    if (balance === null) {
-      return c.json(
-        {
-          success: false,
-          error: "insufficient_balance",
-          message: `This call costs ${inDollars(micros)} and your balance is ${inDollars(account.balanceMicros)}.`,
-          price: inDollars(micros),
-          balance: inDollars(account.balanceMicros),
-        },
-        402,
-      );
-    }
-
-    c.set("payer", { gate: "key", account, chargedMicros: micros, identity: account.id });
-    c.header("x-oassis-price", inDollars(micros));
-    c.header("x-oassis-balance", inDollars(balance));
-    return next();
+  if(prepaidAccount){
+    const row=prepaidAccount.startsWith("site:") ? await ensureBilling(c.env,prepaidAccount.slice(5)) : {balance_micros:keyAccount ? keyAccount.balanceMicros : 0};
+    try {await c.env.BILLING.prepare('INSERT INTO prepaid_debits(id,account,micros,at,route) VALUES(?,?,?,?,?)').bind(crypto.randomUUID(),prepaidAccount,micros,Date.now(),new URL(c.req.url).pathname).run();}
+    catch(e){if(String(e).includes('insufficient_balance'))return c.json({success:false,error:'insufficient_credits',required_credits:creditsFor(micros),available_credits:creditsFor(row.balance_micros),message:CREDIT_GUIDE,recharge_url:'https://oassis.dev/dashboard/billing'},402);throw e;}
+    c.set('payer',{gate:'key',account:{id:prepaidAccount,balanceMicros:row.balance_micros-micros,maxSessions:3},identity:prepaidAccount,chargedMicros:micros});
+    c.header('x-oassis-credits',String(creditsFor(micros)));
+    c.header('x-oassis-price',inDollars(micros));
+    c.header('x-oassis-balance',inDollars(row.balance_micros-micros));
+    await next();return;
   }
-
   // No key: the wallet gate. The x402 middleware answers the 402 with the exact
   // amount, verifies the payment and only then lets the call through.
   const walletGate = x402(c.env);
@@ -289,7 +234,7 @@ export const billing: MiddlewareHandler<{ Bindings: Env }> = async (c, next) => 
         success: false,
         error: "payment_required",
         message:
-          "An API key is required (`Authorization: Bearer oas_…`). Wallet payment is not configured on this deployment.",
+          "Wallet payment is not configured on this deployment. No API key is required.",
         price: inDollars(micros),
       },
       402,
@@ -339,7 +284,7 @@ export const billing: MiddlewareHandler<{ Bindings: Env }> = async (c, next) => 
         {
           success: false,
           error: "payment_required",
-          message: "Wallet payment is unavailable right now. Use an API key (`Authorization: Bearer oas_…`).",
+          message: "Wallet payment is unavailable right now. Try again later; no API key is required.",
           price: inDollars(micros),
         },
         402,
@@ -355,7 +300,7 @@ export const billing: MiddlewareHandler<{ Bindings: Env }> = async (c, next) => 
       {
         success: false,
         error: "payment_required",
-        message: "Wallet payment is unavailable right now. Use an API key (`Authorization: Bearer oas_…`).",
+        message: "Wallet payment is unavailable right now. Try again later; no API key is required.",
         price: inDollars(micros),
       },
       402,

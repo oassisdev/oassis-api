@@ -28,7 +28,7 @@ describe("MCP protocol", () => {
     // sent it there do not disagree about what this server is called.
     expect(result.serverInfo.name).toBe("oassis");
     expect(result.serverInfo.version).toBe(VERSION);
-    expect(result.instructions).toMatch(/Authorization/);
+    expect(result.instructions).toMatch(/100-credit trial/);
   });
 
   it("tools/list brings every tool with its schema", async () => {
@@ -86,7 +86,7 @@ describe("MCP protocol", () => {
   it("a GET explains the transport instead of failing", async () => {
     const r = await mcp.request("/mcp", { method: "GET" }, env);
     const body = (await r.json()) as any;
-    expect(body.auth).toMatch(/Bearer/);
+    expect(body.auth).toContain("Bearer API key");
     expect(body.tools).toContain("web_scrape");
   });
 });
@@ -102,10 +102,10 @@ describe("billing over MCP", () => {
       })
     ).json()) as any;
     expect(result.isError).toBe(true);
-    expect(result.content[0].text).toMatch(/Search is not configured|is paid/);
+    expect(result.content[0].text).toMatch(/api_key_required/);
   });
 
-  it("a key the database does not recognise is rejected", async () => {
+  it("rejects invalid API keys without falling back to a trial", async () => {
     const { result } = (await (
       await rpc(
         {

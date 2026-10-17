@@ -122,7 +122,7 @@ export class AgentTask extends DurableObject<Env> {
           return { ok: false, error: e instanceof Error ? e.message : String(e) };
         }
       },
-      synthesize: (doc) => bounded(synthesize(env.AI, doc, model), null, ANSWER_TIMEOUT_MS),
+      synthesize: (doc) => bounded(synthesize(env.AI, doc, model), { refusal: "timeout" as const }, ANSWER_TIMEOUT_MS),
     };
   }
 }

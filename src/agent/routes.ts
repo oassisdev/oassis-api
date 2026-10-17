@@ -1,81 +1,78 @@
-/**
- * The HTTP door for agent tasks. Only transport lives here: the key, the headers and the status
- * codes. What a task is, what it costs and what it may do is decided in service.ts, which the
- * MCP tools call as well.
- */
+/** HTTP tasks: x402 on start; task capability on status/cancel. */
+import { Hono } from 'hono';
+import type { Env } from '../types';
+import { x402 } from '../billing/x402';
+import { payerFromHeaders, walletIdentity } from '../billing/payer';
+import { requestAccount } from '../billing/accounts';
+import { startTask, getTask } from './service';
+import { recordWalletPayment } from '../billing/accounts';
+import { taskRequest } from './request';
+import { startPublicTask, publicTask, taskIdentity } from './public-access';
+import { kick, cancelTask } from './service';
 
-import { Hono } from "hono";
-import { accountForKey } from "../billing/accounts";
-import type { Env } from "../types";
-import { cancelTask, getTask, startTask } from "./service";
-
-export const agentRoutes = new Hono<{ Bindings: Env }>();
-
-/** Task answers are private to their account: nothing about them may be stored by a cache. */
-agentRoutes.use("*", async (c, next) => {
-  await next();
-  c.header("cache-control", "no-store");
+export const agentRoutes=new Hono<{Bindings:Env}>();
+agentRoutes.use('/agent/v1/*',async(c,next)=>{await next();c.header('cache-control','no-store');});
+agentRoutes.get('/agent/v1/tasks',async(c)=>{
+ const gate=x402(c.env);if(!gate)return c.json({success:false,error:'payment_unavailable'},503);
+ return gate(c,async()=>{c.res=c.json({endpoint:'POST /agent/v1/tasks',access:'x402 on start; Task-Token on status/cancel',pricing:'fixed execution budget',default_price:'$0.10'});});
 });
-
-const bearer = (header: string | undefined): string => (header ?? "").replace(/^Bearer\s+/i, "").trim();
-
-async function requireAccount(c: { req: { header(n: string): string | undefined }; env: Env; json: (b: unknown, s: number) => Response }): Promise<{ id: string } | Response> {
-  const key = bearer(c.req.header("authorization"));
-  if (!key) {
-    return c.json(
-      {
-        success: false,
-        error: "unauthorized",
-        message: "Agent tasks need an API key with a balance: send `Authorization: Bearer oas_…`.",
-      },
-      401,
-    );
+agentRoutes.post('/agent/v1/tasks',async(c)=>{
+ const key=await requestAccount(c.env?.BILLING,c.req.raw.headers);
+ if(key==='invalid')return c.json({error:'invalid_api_key'},401);
+ if(key){
+  const body=await c.req.json().catch(()=>null);const idem=c.req.header('idempotency-key');
+  if(!idem||!/^[-a-zA-Z0-9_:]{1,100}$/.test(idem))return c.json({error:'Idempotency-Key is required.'},400);
+  const out=await startTask(c.env,{account:key.id,body,idempotencyKey:idem,baseUrl:c.env.BASE_URL});
+  return out.ok?c.json({...out,task_id:out.taskId,billing:{channel:'credits',pricing:'reserve maximum; charge actual cost; release unused credits'}},202):c.json(out.error,out.error.status as 400);
+ }
+ const gate=x402(c.env);if(!gate)return c.json({success:false,error:'payment_unavailable',message:'x402 is unavailable. No API key is required.'},503);
+ const payment=c.req.header('payment-signature')||c.req.header('x-payment');
+ const body=await c.req.json().catch(()=>null);
+ if(payment&&!taskRequest.safeParse(body).success)return c.json({success:false,error:'invalid_request'},400);
+ const token=c.req.header('task-token');
+ if(token&&!/^[a-f0-9]{64}$/.test(token))return c.json({success:false,error:'invalid_task_token'},400);
+ const idem=c.req.header('idempotency-key');
+ if(idem&&!/^[A-Za-z0-9._:-]{1,200}$/.test(idem))return c.json({success:false,error:'invalid_idempotency_key'},400);
+ if(token&&idem){
+  const owner=await taskIdentity(token);
+  const saved=await c.env.BILLING.prepare('SELECT note FROM accounts WHERE id=?').bind(owner).first<{note:string}>();
+  const metadata=JSON.parse(saved?.note||'{}');
+  if(metadata.transport==='x402'&&metadata.paid){
+   const replay=await startPublicTask(c.env,body,'x402',token,idem);
+   if(!replay.ok)return c.json({success:false,...replay.error},replay.error.status as 400);
+   return c.json({task_id:replay.taskId,status:replay.status,location:replay.location,access_token:replay.accessToken,replayed:true},202);
   }
-  const account = await accountForKey(c.env.BILLING, key);
-  if (!account) return c.json({ success: false, error: "unauthorized", message: "Invalid or revoked key." }, 401);
-  return { id: account.id };
-}
-
-agentRoutes.post("/agent/v1/tasks", async (c) => {
-  const who = await requireAccount(c);
-  if (who instanceof Response) return who;
-
-  let body: unknown;
-  try {
-    body = await c.req.json();
-  } catch {
-    return c.json({ success: false, error: "invalid_request", message: "The body must be JSON." }, 400);
-  }
-
-  const result = await startTask(c.env, {
-    account: who.id,
-    body,
-    idempotencyKey: c.req.header("idempotency-key") ?? null,
-    baseUrl: c.env.BASE_URL,
-  });
-  if (!result.ok) {
-    const e = result.error;
-    return c.json({ success: false, error: e.error, message: e.message, ...(e.details ? { details: e.details } : {}) }, e.status as 400);
-  }
-  c.header("location", result.location);
-  return c.json(
-    { task_id: result.taskId, status: result.status, location: result.location, replayed: !result.created },
-    202,
-  );
+ }
+ let accepted:Extract<Awaited<ReturnType<typeof startPublicTask>>,{ok:true}>|undefined;
+ let wallet:string|null=null;
+ const response=await gate(c,async()=>{
+  wallet=payerFromHeaders(c.req.raw.headers);
+  if(!wallet){c.res=c.json({success:false,error:'payer_identity_unavailable'},400);return;}
+  const result=await startPublicTask(c.env,body,'x402',token,idem);
+  if(!result.ok){c.res=c.json({success:false,...result.error},result.error.status as 400);return;}
+  accepted=result;
+  c.header('location',result.location);
+  c.res=c.json({task_id:result.taskId,status:result.status,location:result.location,access_token:result.accessToken,replayed:!result.created,billing:{channel:'x402',price:result.priceMicros/1e6,pricing:'fixed execution budget; no automatic on-chain refund'}},202);
+ });
+ if(response)c.res=response;
+ const status=response?.status??c.res.status;
+ if(accepted&&status>=200&&status<300){
+  // Start the alarm only after x402 has successfully settled the payment.
+  await recordWalletPayment(c.env.BILLING,walletIdentity(wallet!),accepted.priceMicros,'/agent/v1/tasks').catch(e=>console.error('task payment log',e));
+  await c.env.BILLING.prepare("UPDATE accounts SET note=json_set(note,'$.paid',1) WHERE id=?").bind(accepted.account).run();
+  await kick(c.env,accepted.taskId).catch(e=>console.error('task kick',e));
+ }else if(accepted){await cancelTask(c.env,accepted.account,accepted.taskId);}
+ return response||c.res;
 });
-
-agentRoutes.get("/agent/v1/tasks/:id", async (c) => {
-  const who = await requireAccount(c);
-  if (who instanceof Response) return who;
-  const out = await getTask(c.env, who.id, c.req.param("id"));
-  if ("error" in out) return c.json({ success: false, error: out.error, message: out.message }, out.status as 404);
-  return c.json(out.body, 200);
+agentRoutes.get('/agent/v1/tasks/:id',async(c)=>{
+ const key=await requestAccount(c.env?.BILLING,c.req.raw.headers);
+ if(key==='invalid')return c.json({error:'invalid_api_key'},401);
+ if(key){const out=await getTask(c.env,key.id,c.req.param('id'));return c.json("body" in out?out.body:out,out.status as 200);}
+ const out=await publicTask(c.env,c.req.param('id'),c.req.header('task-token')||'');return c.json(out.body,out.status as 200);
 });
-
-agentRoutes.post("/agent/v1/tasks/:id/cancel", async (c) => {
-  const who = await requireAccount(c);
-  if (who instanceof Response) return who;
-  const out = await cancelTask(c.env, who.id, c.req.param("id"));
-  if ("error" in out) return c.json({ success: false, error: out.error, message: out.message }, out.status as 404);
-  return c.json(out.body, out.status as 202);
+agentRoutes.post('/agent/v1/tasks/:id/cancel',async(c)=>{
+ const key=await requestAccount(c.env?.BILLING,c.req.raw.headers);
+ if(key==='invalid')return c.json({error:'invalid_api_key'},401);
+ if(key){const out=await cancelTask(c.env,key.id,c.req.param('id'));return c.json("body" in out?out.body:out,out.status as 200);}
+ const out=await publicTask(c.env,c.req.param('id'),c.req.header('task-token')||'',true);return c.json(out.body,out.status as 200);
 });
