@@ -48,12 +48,10 @@ describe("every documented field can be typed", () => {
 describe("the catalogue", () => {
   it("describes every paid route, on the host it was asked from", () => {
     const spec = openapi(ctx()) as { paths: Record<string, unknown>; servers: { url: string }[] };
-    expect(Object.keys(spec.paths).filter((p) => p.startsWith("/web/v1")).sort()).toEqual([
+    expect(Object.keys(spec.paths).filter((p) => p.startsWith("/web/v1") && (spec.paths[p] as any).post?.["x-x402"]).sort()).toEqual([
       "/web/v1/act",
-      "/web/v1/crawl",
       "/web/v1/map",
       "/web/v1/scrape",
-      "/web/v1/scrape/batch",
       "/web/v1/search",
       "/web/v1/session",
     ]);
@@ -75,7 +73,7 @@ describe("the catalogue", () => {
       env: { BASE_URL: "https://api.oassis.dev" },
     } as unknown as Parameters<typeof openapi>[0];
     const spec = openapi(family) as { paths: Record<string, unknown>; servers: { url: string }[] };
-    expect(Object.keys(spec.paths)).toContain("/v1/scrape");
+    expect(Object.keys(spec.paths)).toContain("/web/v1/scrape");
     expect(spec.servers[0]?.url).toBe("https://web.oassis.dev");
   });
 
@@ -84,7 +82,7 @@ describe("the catalogue", () => {
       paths: Record<string, { post: { "x-x402": { price: string; payTo: string; network: string } } }>;
     };
     for (const [path, entry] of Object.entries(spec.paths)) {
-      if (!path.startsWith("/web/v1")) continue;
+      if (!path.startsWith("/web/v1") || !entry.post?.["x-x402"]) continue;
       expect(entry.post["x-x402"].price, path).toMatch(/\$\d/);
       expect(entry.post["x-x402"].payTo, path).toBe("0x23Fc725e8EAa1c58900C6507Ba89be99a6DFc75d");
       expect(entry.post["x-x402"].network, path).toBe("eip155:8453");
@@ -125,12 +123,12 @@ describe("llms.txt", () => {
   it("publishes every route the guard charges for", () => {
     const spec = openapi(ctx()) as { paths: Record<string, unknown> };
     for (const path of ["scrape", "session", "act", "scrape/batch", "map", "crawl", "search"]) {
-      expect(Object.keys(spec.paths), path).toContain(`/web/v1/${path}`);
+      expect(Object.keys(spec.paths), path).toContain(path === "crawl" || path === "scrape/batch" ? `/tasks/v1/${path}` : `/web/v1/${path}`);
     }
   });
 
   it("lists every endpoint with its price and its tool", () => {
-    for (const path of ["/web/v1/scrape", "/web/v1/map", "/web/v1/crawl", "/web/v1/search"]) {
+    for (const path of ["/web/v1/scrape", "/web/v1/map", "/tasks/v1/crawl", "/web/v1/search"]) {
       expect(text).toContain(`### POST ${path}`);
     }
     expect(text).toContain("web_search_exa");
@@ -152,11 +150,11 @@ describe("llms.txt", () => {
 describe("agent task paths", () => {
   it("document x402 start and task-token access without API keys", () => {
     const spec = openapi(ctx()) as { paths: Record<string, any>; components: { securitySchemes: Record<string, unknown> } };
-    const start = spec.paths["/agent/v1/tasks"];
+    const start = spec.paths["/tasks/v1/research"];
     expect(start?.post.operationId).toBe("web_task_start");
     expect(start?.post.security).toEqual([{apiKey:[]},{}]);
     expect(start?.post["x-x402"]).toBeDefined();
     expect(spec.components.securitySchemes.taskToken).toBeDefined();
-    expect(Object.keys(spec.paths).some((p) => p.endsWith("/agent/v1/tasks/{task_id}/cancel"))).toBe(true);
+    expect(Object.keys(spec.paths).some((p) => p.endsWith("/tasks/v1/research/{task_id}/cancel"))).toBe(true);
   });
 });

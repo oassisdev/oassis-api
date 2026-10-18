@@ -14,7 +14,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { batchDoc, crawlDoc } from "../src/docs";
 
-const c = { env: { BASE_URL: "https://api.oassis.dev" }, req: { path: "/web/v1/crawl" } } as never;
+const c = { env: { BASE_URL: "https://api.oassis.dev" }, req: { path: "/tasks/v1/crawl" } } as never;
 
 describe("el límite de la devolución", () => {
   it.each([

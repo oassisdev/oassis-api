@@ -23,7 +23,7 @@ const MAX_ANONYMOUS_PER_DAY = 200;
 
 export const feedback = new Hono<{ Bindings: Env }>();
 
-const bothPaths = (suffix: string) => [`/web/v1/${suffix}`, `/v1/${suffix}`];
+
 
 export const feedbackRequest = z
   .object({
@@ -93,7 +93,8 @@ export async function storeFeedback(
   return "stored";
 }
 
-for (const route of bothPaths("feedback")) {
+{
+ const route="/web/v1/feedback";
   feedback.get(route, (c) =>
     c.json(
       {

@@ -6,6 +6,7 @@
  * future families (`/ai/v1`, `/data/v1`) without versioning this one again.
  */
 
+import { productPath } from "./api-routes";
 import { Hono, type Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { badRequest, cacheableDoc, origin, prefixForHost } from "./http";
@@ -28,6 +29,9 @@ import { mcp } from "./mcp";
 
 import { feedback } from "./feedback";
 import { agentRoutes } from "./agent/routes";
+import { agentServiceRoutes } from "./agents/routes";
+import { mountAgentPages } from "./agents/pages";
+import { runDueAgents } from "./agents/services";
 import serverManifest from "../server.json";
 import {
   closeSession,
@@ -93,7 +97,7 @@ app.route("/", mcp);
 // much money you have left cannot cost money.
 
 
-for(const path of ['/web/v1/account','/v1/account'])app.get(path,async c=>{
+app.get('/web/v1/account',async c=>{
  c.header('cache-control','no-store');
  const account=await requestAccount(c.env.BILLING,c.req.raw.headers);
  if(!account||account==='invalid')return c.json({error:'api_key_required'},401);
@@ -107,6 +111,8 @@ app.route("/", feedback);
 
 // Agent tasks: their own auth and their own billing, so they sit outside the product guard.
 app.route("/", agentRoutes);
+app.route("/", agentServiceRoutes);
+mountAgentPages(app);
 
 /**
  * The front page has two audiences on two hosts. The bare domain is where a person lands,
@@ -121,39 +127,37 @@ app.get("/", (c) => {
     service: "oassis-api",
     docs: `${origin(c)}${prefixForHost(c)}/scrape`,
     endpoints: [
-      "POST /web/v1/scrape",
-      "POST /web/v1/session",
-      "POST /web/v1/act",
-      "DELETE /web/v1/session/:id",
-      "POST /mcp",
-      "GET /web/v1/account",
-      "GET /web/v1/account/usage",
-      "GET /web/v1/account/transactions",
-      "GET /web/v1/account/sessions",
-      "POST /web/v1/feedback",
-      "POST /web/v1/search",
-      "POST /web/v1/scrape/batch",
-      "GET /web/v1/scrape/batch/:id",
-      "DELETE /web/v1/scrape/batch/:id",
-      "POST /web/v1/map",
-      "POST /web/v1/crawl",
-      "GET /web/v1/crawl/:id",
-      "DELETE /web/v1/crawl/:id",
+      'POST /web/v1/scrape',
+      'POST /web/v1/map',
+      'POST /web/v1/search',
+      'POST /web/v1/session',
+      'POST /web/v1/act',
+      'DELETE /web/v1/session/:id',
+      'POST /web/v1/feedback',
+      'GET /web/v1/account',
+      'POST /tasks/v1/scrape/batch',
+      'GET /tasks/v1/scrape/batch/:id',
+      'POST /tasks/v1/scrape/batch/:id/cancel',
+      'POST /tasks/v1/crawl',
+      'GET /tasks/v1/crawl/:id',
+      'POST /tasks/v1/crawl/:id/cancel',
+      'POST /tasks/v1/research',
+      'GET /tasks/v1/research/:id',
+      'POST /tasks/v1/research/:id/cancel',
+      'GET /agents/v1',
+      'GET /agents/v1/services',
+      'GET /agents/v1/:agent',
+      'POST /agents/v1/:agent',
+      'GET /agents/v1/services/:id',
+      'POST /agents/v1/services/:id/cancel',
+      'POST /mcp',
     ],
   });
 });
 
-/**
- * Every route is served in both shapes: `/web/v1/x` (the umbrella,
- * api.oassis.dev) and `/v1/x` (the family alone, web.oassis.dev). They are real
- * routes, not redirects: the 402 challenge has to come out on the URL the client
- * called, which is the one that ends up published in x402 directories.
- */
-const bothPaths = (suffix: string) => [`/web/v1/${suffix}`, `/v1/${suffix}`];
+app.get(productPath("scrape"), (c) => cacheableDoc(c, doc(c)));
 
-for (const route of bothPaths("scrape")) app.get(route, (c) => cacheableDoc(c, doc(c)));
-
-app.on("POST", bothPaths("scrape"), async (c) => {
+app.on("POST", productPath("scrape"), async (c) => {
   const parsed = scrapeRequest.safeParse(parsedBody(c));
   if (!parsed.success) return badRequest(c, parsed.error);
 
@@ -191,7 +195,7 @@ async function refund(c: Context<{ Bindings: Env }>, concept: string): Promise<v
 }
 
 
-for (const route of bothPaths("session")) app.get(route, (c) => cacheableDoc(c, sessionDoc(c)));
+app.get(productPath("session"), (c) => cacheableDoc(c, sessionDoc(c)));
 
 /**
  * Calls the Durable Object holding the session. Its response is forwarded as-is,
@@ -257,7 +261,7 @@ async function callSession(
   return withPrice;
 }
 
-app.on("POST", bothPaths("session"), async (c) => {
+app.on("POST", productPath("session"), async (c) => {
   const parsed = sessionRequest.safeParse(parsedBody(c));
   if (!parsed.success) return badRequest(c, parsed.error);
 
@@ -312,9 +316,9 @@ async function sessionNotYours(
   );
 }
 
-for (const route of bothPaths("act")) app.get(route, (c) => cacheableDoc(c, actDoc(c)));
+app.get(productPath("act"), (c) => cacheableDoc(c, actDoc(c)));
 
-app.on("POST", bothPaths("act"), async (c) => {
+app.on("POST", productPath("act"), async (c) => {
   const parsed = actRequest.safeParse(parsedBody(c));
   if (!parsed.success) return badRequest(c, parsed.error);
 
@@ -330,7 +334,7 @@ app.on("POST", bothPaths("act"), async (c) => {
   return refundUnrunActions(c, actions.length, res);
 });
 
-app.on("DELETE", bothPaths("session/:id"), async (c) => {
+app.on("DELETE", productPath("session/:id"), async (c) => {
   /**
    * Closing is free, so the billing guard never runs here and the caller has to be resolved
    * by hand: otherwise anybody holding an id could kill a stranger's session mid-work. A key
@@ -347,7 +351,7 @@ app.on("DELETE", bothPaths("session/:id"), async (c) => {
 });
 
 
-for (const route of bothPaths("scrape/batch")) app.get(route, (c) => cacheableDoc(c, batchDoc(c)));
+app.get(productPath("scrape/batch"), (c) => cacheableDoc(c, batchDoc(c)));
 
 async function callJob(c: Context<{ Bindings: Env }>, id: string, message: JobMessage): Promise<Response> {
   const stub = c.env.JOBS.get(c.env.JOBS.idFromString(id));
@@ -364,7 +368,7 @@ async function callJob(c: Context<{ Bindings: Env }>, id: string, message: JobMe
   return withPrice;
 }
 
-app.on("POST", bothPaths("scrape/batch"), async (c) => {
+app.on("POST", productPath("scrape/batch"), async (c) => {
   const parsed = batchRequest.safeParse(parsedBody(c));
   if (!parsed.success) return badRequest(c, parsed.error);
 
@@ -408,7 +412,8 @@ async function jobCaller(c: Context<{ Bindings: Env }>): Promise<string | null |
   return wallet ? walletIdentity(wallet) : null;
 }
 
-for (const route of bothPaths("scrape/batch/:id")) {
+{
+  const route=productPath("scrape/batch/:id");
   app.get(route, async (c) => {
     const who = await jobCaller(c);
     if (who instanceof Response) return who;
@@ -416,7 +421,7 @@ for (const route of bothPaths("scrape/batch/:id")) {
     return jobFor(c, c.req.param("id") ?? "", who, { kind: "status", limit });
   });
 
-  app.delete(route, async (c) => {
+  app.post(route + "/cancel", async (c) => {
     const who = await jobCaller(c);
     if (who instanceof Response) return who;
     return jobFor(c, c.req.param("id") ?? "", who, { kind: "cancel" });
@@ -448,9 +453,9 @@ async function jobFor(
 }
 
 
-for (const route of bothPaths("map")) app.get(route, (c) => cacheableDoc(c, mapDoc(c)));
+app.get(productPath("map"), (c) => cacheableDoc(c, mapDoc(c)));
 
-app.on("POST", bothPaths("map"), async (c) => {
+app.on("POST", productPath("map"), async (c) => {
   const parsed = mapRequest.safeParse(parsedBody(c));
   if (!parsed.success) return badRequest(c, parsed.error);
 
@@ -505,7 +510,7 @@ app.on("POST", bothPaths("map"), async (c) => {
 });
 
 
-for (const route of bothPaths("crawl")) app.get(route, (c) => cacheableDoc(c, crawlDoc(c)));
+app.get(productPath("crawl"), (c) => cacheableDoc(c, crawlDoc(c)));
 
 async function callCrawl(c: Context<{ Bindings: Env }>, id: string, message: CrawlMessage): Promise<Response> {
   const stub = c.env.CRAWLS.get(c.env.CRAWLS.idFromString(id));
@@ -522,7 +527,7 @@ async function callCrawl(c: Context<{ Bindings: Env }>, id: string, message: Cra
   return withPrice;
 }
 
-app.on("POST", bothPaths("crawl"), async (c) => {
+app.on("POST", productPath("crawl"), async (c) => {
   const parsed = crawlRequest.safeParse(parsedBody(c));
   if (!parsed.success) return badRequest(c, parsed.error);
 
@@ -544,7 +549,8 @@ app.on("POST", bothPaths("crawl"), async (c) => {
   });
 });
 
-for (const route of bothPaths("crawl/:id")) {
+{
+  const route=productPath("crawl/:id");
   app.get(route, async (c) => {
     const who = await jobCaller(c);
     if (who instanceof Response) return who;
@@ -552,7 +558,7 @@ for (const route of bothPaths("crawl/:id")) {
     return crawlFor(c, c.req.param("id") ?? "", who, { kind: "status", limit });
   });
 
-  app.delete(route, async (c) => {
+  app.post(route + "/cancel", async (c) => {
     const who = await jobCaller(c);
     if (who instanceof Response) return who;
     return crawlFor(c, c.req.param("id") ?? "", who, { kind: "cancel" });
@@ -576,9 +582,9 @@ async function crawlFor(
 }
 
 
-for (const route of bothPaths("search")) app.get(route, (c) => cacheableDoc(c, searchDoc(c)));
+app.get(productPath("search"), (c) => cacheableDoc(c, searchDoc(c)));
 
-app.on("POST", bothPaths("search"), async (c) => {
+app.on("POST", productPath("search"), async (c) => {
   const parsed = searchRequest.safeParse(parsedBody(c));
   if (!parsed.success) return badRequest(c, parsed.error);
 
@@ -688,4 +694,4 @@ app.onError((e, c) => {
   return c.json({ success: false, error: "internal", message: "Unexpected error." }, 500);
 });
 
-export default {fetch:app.fetch,scheduled:(_controller:ScheduledController,env:Env,ctx:ExecutionContext)=>{ctx.waitUntil(creditNotices(env));}} satisfies ExportedHandler<Env>;
+export default {fetch:app.fetch,scheduled:(_controller:ScheduledController,env:Env,ctx:ExecutionContext)=>{ctx.waitUntil(creditNotices(env));ctx.waitUntil(runDueAgents(env));}} satisfies ExportedHandler<Env>;

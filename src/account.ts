@@ -19,7 +19,7 @@ import type { Env } from "./types";
 export const account = new Hono<{ Bindings: Env }>();
 
 /** Routes are served under both prefixes, like the rest of the API. */
-const bothPaths = (suffix: string) => [`/web/v1/${suffix}`, `/v1/${suffix}`];
+const accountPath = (suffix: string) => [`/web/v1/${suffix}`];
 
 interface Caller {
   id: string;
@@ -48,7 +48,7 @@ async function caller(c: Context<{ Bindings: Env }>): Promise<Caller | Response>
   return found;
 }
 
-for (const route of bothPaths("account")) {
+for (const route of accountPath("account")) {
   /**
    * The one call an agent should make before planning work: what is left, what it
    * is allowed to hold open, and what it has spent lately.
@@ -89,7 +89,7 @@ for (const route of bothPaths("account")) {
   });
 }
 
-for (const route of bothPaths("account/usage")) {
+for (const route of accountPath("account/usage")) {
   /** Spend per day and per route, to see where the money goes without reading every entry. */
   account.get(route, async (c) => {
     const who = await caller(c);
@@ -131,7 +131,7 @@ for (const route of bothPaths("account/usage")) {
   });
 }
 
-for (const route of bothPaths("account/transactions")) {
+for (const route of accountPath("account/transactions")) {
   /** The movements themselves, newest first: this is what explains a balance. */
   account.get(route, async (c) => {
     const who = await caller(c);
@@ -159,7 +159,7 @@ for (const route of bothPaths("account/transactions")) {
   });
 }
 
-for (const route of bothPaths("account/sessions")) {
+for (const route of accountPath("account/sessions")) {
   /** What is open right now, which is what is still being billed by the minute. */
   account.get(route, async (c) => {
     const who = await caller(c);

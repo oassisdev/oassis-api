@@ -93,7 +93,7 @@ export class CrawlJob extends DurableObject<Env> {
         status: "queued",
         limit: message.req.limit,
         maxDepth: message.req.maxDepth,
-        collect: `GET /web/v1/crawl/${jobId}`,
+        collect: `GET /tasks/v1/crawl/${jobId}`,
       });
     }
 

@@ -29,7 +29,7 @@ function fakeEnv(opts: { known?: boolean; today?: number } = {}) {
   return { env: { BILLING } as never, writes };
 }
 
-const send = (body: unknown, key: string | null, env: never, path = "/v1/feedback") =>
+const send = (body: unknown, key: string | null, env: never, path = "/web/v1/feedback") =>
   feedback.request(
     path,
     {
@@ -115,7 +115,7 @@ describe("storing it", () => {
 
   it("a GET explains the endpoint instead of failing", async () => {
     const { env } = fakeEnv();
-    const r = await feedback.request("/v1/feedback", {}, env);
+    const r = await feedback.request("/web/v1/feedback", {}, env);
     expect(r.status).toBe(200);
     expect(((await r.json()) as any).request.verdict).toMatch(/good/);
   });

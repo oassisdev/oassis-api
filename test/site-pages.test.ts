@@ -23,6 +23,6 @@ describe('public SEO guides',()=>{
   const a=app();const post=await a.request('https://oassis.dev/mcp',{method:'POST'});expect(await post.json()).toEqual({protocol:true});const api=await a.request('https://api.oassis.dev/mcp');expect(api.status).toBe(404);
  });
  it('keeps task responses private without overriding public document caching',async()=>{
-  const a=app();const doc=await a.request('https://api.oassis.dev/openapi.json');expect(doc.headers.get('cache-control')).toContain('public');const task=await a.request('https://api.oassis.dev/agent/v1/tasks/id');expect(task.status).toBe(401);expect(task.headers.get('cache-control')).toBe('no-store');
+  const a=app();const doc=await a.request('https://api.oassis.dev/openapi.json');expect(doc.headers.get('cache-control')).toContain('public');const task=await a.request('https://api.oassis.dev/tasks/v1/research/id');expect(task.status).toBe(401);expect(task.headers.get('cache-control')).toBe('no-store');
  });
 });

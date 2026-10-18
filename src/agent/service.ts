@@ -126,7 +126,7 @@ export async function startTask(env: Env, input: StartInput): Promise<StartResul
 }
 
 function started(input: StartInput, id: string, status: string, created: boolean): StartResult {
-  return { ok: true, created, taskId: id, status, location: `${input.baseUrl}/agent/v1/tasks/${id}` };
+  return { ok: true, created, taskId: id, status, location: `${input.baseUrl}/tasks/v1/research/${id}` };
 }
 
 function conflict(): StartResult {

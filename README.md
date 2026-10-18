@@ -103,16 +103,18 @@ Over HTTP each one is paid. Each one is served at `api.oassis.dev/web/v1/…` an
 | POST | `/web/v1/session` | Opens a browser on a URL and returns its controls, each with a `ref` | `web_session_open` | $0.005 for the first minute + outputs |
 | POST | `/web/v1/act` | Click, type, select, wait, scroll on an open session | `web_act` | $0.0005 per action + outputs |
 | DELETE | `/web/v1/session/:id` | Closes a session | `web_session_close` | Free (time used is billed) |
-| POST | `/web/v1/scrape/batch` | Reads a list of URLs as a background job | `web_scrape_batch` | One scrape per URL |
-| GET | `/web/v1/scrape/batch/:id` | Status and results of a batch | `web_batch_status` | Free |
+| POST | `/tasks/v1/scrape/batch` | Reads a list of URLs as a background job | `web_scrape_batch` | One scrape per URL |
+| GET | `/tasks/v1/scrape/batch/:id` | Status and results of a batch | `web_batch_status` | Free |
+| POST | `/tasks/v1/scrape/batch/:id/cancel` | Cancel a batch | `web_batch_status` with cancel | Free |
 | POST | `/web/v1/map` | Lists a site's URLs from its sitemap (optionally with the page) | `web_map` | $0.002 (no page) · $0.003 (with page) |
-| POST | `/web/v1/crawl` | Follows a site's links and reads each page, as a job | `web_crawl` | Per page read, charged up front |
-| GET | `/web/v1/crawl/:id` | Status and results of a crawl | `web_crawl_status` | Free |
+| POST | `/tasks/v1/crawl` | Follows a site's links and reads each page, as a job | `web_crawl` | Per page read, charged up front |
+| GET | `/tasks/v1/crawl/:id` | Status and results of a crawl | `web_crawl_status` | Free |
+| POST | `/tasks/v1/crawl/:id/cancel` | Cancel a crawl | `web_crawl_status` with cancel | Free |
 | POST | `/web/v1/search` | Web search with Exa's index | `web_search_exa` | What Exa charges (≈ $0.007) |
 | POST | `/web/v1/feedback` | Report a result that was wrong | `web_feedback` | Free |
-| POST | `/agent/v1/tasks` | Start a research task (API key and balance) | `web_task_start` | $0.002 + steps |
-| GET | `/agent/v1/tasks/{id}` | Status, progress, sources, result and billing | `web_task_status` | Free |
-| POST | `/agent/v1/tasks/{id}/cancel` | Stop a task and return the unused budget | `web_task_cancel` | Free |
+| POST | `/tasks/v1/research` | Start a research task (API key and balance) | `web_task_start` | $0.002 + steps |
+| GET | `/tasks/v1/research/{id}` | Status, progress, sources, result and billing | `web_task_status` | Free |
+| POST | `/tasks/v1/research/{id}/cancel` | Stop a task and return the unused budget | `web_task_cancel` | Free |
 
 MCP and HTTP share credit prices. One credit = $0.002; verified accounts receive 1,000 welcome credits once. Any `GET` on a route returns, for free, the fields it expects and what it costs.
 
@@ -175,7 +177,7 @@ its own steps: it decides what to search, which pages to read, and when it has e
 Tasks require an API key with credits over MCP/HTTP, reserving a maximum and charging actual execution cost. x402 can independently pay a fixed task package.
 
 ```bash
-curl -X POST https://api.oassis.dev/agent/v1/tasks \
+curl -X POST https://api.oassis.dev/tasks/v1/research \
   -H 'authorization: Bearer oas_…' \
   -H 'content-type: application/json' \
   -H 'idempotency-key: compare-hosts-1' \
@@ -187,7 +189,7 @@ curl -X POST https://api.oassis.dev/agent/v1/tasks \
 The answer is `202 Accepted` with a `Location` header. Read it until it is final:
 
 ```bash
-curl https://api.oassis.dev/agent/v1/tasks/TASK_ID -H 'authorization: Bearer oas_…'
+curl https://api.oassis.dev/tasks/v1/research/TASK_ID -H 'authorization: Bearer oas_…'
 ```
 
 Statuses: `queued`, `running`, `completed`, `partial`, `failed`, `cancelled`. A task is
@@ -195,7 +197,7 @@ Statuses: `queued`, `running`, `completed`, `partial`, `failed`, `cancelled`. A 
 no limit was hit. Otherwise it is `partial`, with the reason and what is missing. A task with no
 page read at all is `failed`.
 
-Cancel with `POST /agent/v1/tasks/TASK_ID/cancel`. Cancelling a finished task changes nothing.
+Cancel with `POST /tasks/v1/research/TASK_ID/cancel`. Cancelling a finished task changes nothing.
 
 **Budget.** `max_cost_usd` is reserved from the balance before the task starts. What the task
 spends is charged at the end, and the rest of the reserve is returned in the same transaction.
@@ -272,3 +274,15 @@ not offer it to third parties as a hosted or managed service.
 Generate or revoke keys at https://oassis.dev/dashboard/billing. Verified accounts receive 1,000 welcome credits once. MCP without a key has a lifetime 100-credit scrape/map trial, associated with a salted Cloudflare IP hash (shared networks share the trial). When exhausted, the tool requests signup and an API key. Status/cancellation and discovery are free.
 
 See [billing operations](docs/prepaid-billing.md) for migrations, Stripe activation and alert delivery.
+
+## Definitive API families
+
+The same paths are used on every API host. There are no old-path aliases or redirects.
+
+- Web Tools: `/web/v1/scrape`, `/map`, `/search`, `/session`, `/act`, `/feedback`. Session close: `DELETE /web/v1/session/:id`.
+- Extraction Tasks: `POST /tasks/v1/scrape/batch` and `POST /tasks/v1/crawl`; status: `GET` on the creation path plus `/:id`; cancellation: `POST` on that status path plus `/cancel`.
+- Research Tasks: `POST /tasks/v1/research`; `GET /tasks/v1/research/:id`; `POST /tasks/v1/research/:id/cancel`.
+- Agent catalog: `GET /agents/v1` and `GET /agents/v1/:agent`. Create a service: `POST /agents/v1/:agent`.
+- Owned services: `GET /agents/v1/services` (latest 100), `GET /agents/v1/services/:id`, `POST /agents/v1/services/:id/cancel`. Cancellation is idempotent, retains the report and stops future runs. A read already in progress may finish.
+
+Clients must replace `/v1/*`, `/web/v1/crawl*`, `/web/v1/scrape/batch*` and `/agent/v1/tasks*`. These old URLs are no longer mounted and return 404. Existing job/service identifiers remain valid on the definitive paths. API keys, MCP tool names and billing rules do not change.

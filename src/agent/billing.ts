@@ -99,7 +99,7 @@ export async function settleTask(db: D1Database, input: SettleInput): Promise<"s
     db
       .prepare(
         `INSERT INTO transactions (account, at, micros, concept, route, reference)
-         SELECT ?1, ?2, -?3, 'agent_task', '/agent/v1/tasks', ?4 WHERE ?3 > 0 AND ${heldBy("?4")}`,
+         SELECT ?1, ?2, -?3, 'agent_task', '/tasks/v1/research', ?4 WHERE ?3 > 0 AND ${heldBy("?4")}`,
       )
       .bind(account, now, spentMicros, taskId),
     db

@@ -66,24 +66,12 @@ declare module "hono" {
 }
 
 /**
- * Both shapes of each route: with the family prefix (api.oassis.dev) and without
- * it (web.oassis.dev). They are billed the same; only the way in differs.
+ * Definitive paid routes. Web Tools and extraction Tasks share the billing guard.
  */
 const ROUTES: Record<string, "scrape" | "session" | "act" | "batch" | "map" | "crawl" | "search"> = {
-  "/web/v1/scrape": "scrape",
-  "/web/v1/session": "session",
-  "/web/v1/act": "act",
-  "/web/v1/scrape/batch": "batch",
-  "/web/v1/map": "map",
-  "/web/v1/crawl": "crawl",
-  "/web/v1/search": "search",
-  "/v1/scrape": "scrape",
-  "/v1/session": "session",
-  "/v1/act": "act",
-  "/v1/scrape/batch": "batch",
-  "/v1/map": "map",
-  "/v1/crawl": "crawl",
-  "/v1/search": "search",
+ "/web/v1/scrape":"scrape", "/web/v1/session":"session", "/web/v1/act":"act",
+ "/web/v1/map":"map", "/web/v1/search":"search",
+ "/tasks/v1/scrape/batch":"batch", "/tasks/v1/crawl":"crawl",
 };
 
 /** The schema of each route, so an invalid request is refused before it is charged. */

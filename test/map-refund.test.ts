@@ -13,7 +13,7 @@ import { readFileSync } from "node:fs";
 describe("a map that finds nothing", () => {
   it("refunds and does not answer 200, over HTTP", () => {
     const src = readFileSync("src/index.ts", "utf8");
-    const route = src.slice(src.indexOf('bothPaths("map")'));
+    const route = src.slice(src.indexOf('productPath("map")'));
     expect(route).toContain('refund(c, "refund: nothing to map")');
     expect(route.slice(0, route.indexOf("});"))).toContain("502");
   });

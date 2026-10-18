@@ -12,6 +12,7 @@
  * network, and says so out loud in the log instead of pretending to charge.
  */
 
+import { productPath, RESEARCH_ROUTE } from "../api-routes";
 import { createFacilitatorConfig } from "@coinbase/x402";
 // The SERVER scheme lives in its own subpath: the one at the package root is the
 // client scheme and does not implement what the resource server needs.
@@ -159,7 +160,7 @@ export function x402(env: Env): MiddlewareHandler<{ Bindings: Env }> | null {
       map: mapDoc,
       crawl: crawlDoc,
       search: searchDoc,
-      task: ()=>({endpoint:"POST /agent/v1/tasks",access:"x402",pricing:"fixed execution budget",default_price:"$0.10",status:"GET /agent/v1/tasks/{id} with Task-Token",cancel:"POST /agent/v1/tasks/{id}/cancel with Task-Token"}),
+      task: ()=>({endpoint:"POST /tasks/v1/research",access:"x402",pricing:"fixed execution budget",default_price:"$0.10",status:"GET /tasks/v1/research/{id} with Task-Token",cancel:"POST /tasks/v1/research/{id}/cancel with Task-Token"}),
     };
 
     const DESCRIPTIONS: Record<Route, string> = {
@@ -173,12 +174,10 @@ export function x402(env: Env): MiddlewareHandler<{ Bindings: Env }> | null {
       task: "Research public pages with sources. Pay a fixed execution budget via x402; no API key.",
     };
 
-    // Every route in both shapes: `/web/v1/x` on the umbrella (api.oassis.dev)
-    // and `/v1/x` on the family host (web.oassis.dev). Both have to be in the
-    // table or the 402 challenge would not be issued on one of them.
+    // Exactly one definitive path per paid operation, on every host.
     const routes: Parameters<typeof paymentMiddleware>[0] = {};
     for (const route of Object.keys(SEGMENT) as Route[]) {
-      for (const path of (route === "task" ? ["/agent/v1/tasks"] : [`/web/v1/${SEGMENT[route]}`, `/v1/${SEGMENT[route]}`])) {
+      for (const path of [route === "task" ? RESEARCH_ROUTE : productPath(SEGMENT[route])]) {
         const cfg = {
           ...common(route),
           description: DESCRIPTIONS[route],
@@ -208,7 +207,7 @@ export function x402(env: Env): MiddlewareHandler<{ Bindings: Env }> | null {
           unpaidResponseBody: () => ({
             contentType: "application/json",
             // The documents need nothing from the request but its path, which decides
-            // the prefix: `/web/v1` on the umbrella host, `/v1` on the family one.
+            // the operation family: /web/v1 for tools, /tasks/v1 for jobs.
             body: DOC_FOR[route]({ req: { path } } as never) as unknown as Record<string, unknown>,
           }),
         };

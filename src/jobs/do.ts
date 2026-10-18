@@ -80,7 +80,7 @@ export class BatchJob extends DurableObject<Env> {
         jobId,
         status: "queued",
         total: message.req.urls.length,
-        collect: `GET /web/v1/scrape/batch/${jobId}`,
+        collect: `GET /tasks/v1/scrape/batch/${jobId}`,
       });
     }
 

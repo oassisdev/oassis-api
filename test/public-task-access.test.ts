@@ -41,13 +41,13 @@ const payment=btoa(JSON.stringify({payload:{authorization:{from:'0x1111111111111
 it('HTTP tasks issue 402 without keys and start only after x402 settlement',async()=>{
  const {env,db,kicks}=setup();
  const request={method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)};
- expect((await agentRoutes.request('/agent/v1/tasks',request,env)).status).toBe(402);expect(kicks).toHaveLength(0);
- const r=await agentRoutes.request('/agent/v1/tasks',{...request,headers:{...request.headers,'payment-signature':payment}},env);expect(r.status).toBe(202);const p=await r.json() as any;expect(p.access_token).toBeTruthy();expect(kicks.filter(x=>x.endsWith('/start'))).toHaveLength(1);
+ expect((await agentRoutes.request('/tasks/v1/research',request,env)).status).toBe(402);expect(kicks).toHaveLength(0);
+ const r=await agentRoutes.request('/tasks/v1/research',{...request,headers:{...request.headers,'payment-signature':payment}},env);expect(r.status).toBe(202);const p=await r.json() as any;expect(p.access_token).toBeTruthy();expect(kicks.filter(x=>x.endsWith('/start'))).toHaveLength(1);
  expect(db.prepare("SELECT COUNT(*) n FROM transactions WHERE account LIKE 'wallet:%'").get().n).toBe(1);
- const status=await agentRoutes.request('/agent/v1/tasks/'+p.task_id,{headers:{'Task-Token':p.access_token}},env);expect(status.status).toBe(200);expect((await status.json() as any).billing.paid).toBe('$0.1');
+ const status=await agentRoutes.request('/tasks/v1/research/'+p.task_id,{headers:{'Task-Token':p.access_token}},env);expect(status.status).toBe(200);expect((await status.json() as any).billing.paid).toBe('$0.1');
 
- const again=await agentRoutes.request('/agent/v1/tasks',{...request,headers:{...request.headers,'Task-Token':p.access_token,'Idempotency-Key':'new-key'}},env);expect(again.status).toBe(409);
+ const again=await agentRoutes.request('/tasks/v1/research',{...request,headers:{...request.headers,'Task-Token':p.access_token,'Idempotency-Key':'new-key'}},env);expect(again.status).toBe(409);
 });
 it('failed settlement never starts the task or records a paid transaction',async()=>{
- const {env,db,kicks}=setup();const r=await agentRoutes.request('/agent/v1/tasks',{method:'POST',headers:{'content-type':'application/json','payment-signature':payment,'x-test-settle':'fail'},body:JSON.stringify(body)},env);expect(r.status).toBe(503);expect(kicks.some(x=>x.endsWith('/start'))).toBe(false);expect(db.prepare("SELECT COUNT(*) n FROM transactions WHERE account LIKE 'wallet:%'").get().n).toBe(0);
+ const {env,db,kicks}=setup();const r=await agentRoutes.request('/tasks/v1/research',{method:'POST',headers:{'content-type':'application/json','payment-signature':payment,'x-test-settle':'fail'},body:JSON.stringify(body)},env);expect(r.status).toBe(503);expect(kicks.some(x=>x.endsWith('/start'))).toBe(false);expect(db.prepare("SELECT COUNT(*) n FROM transactions WHERE account LIKE 'wallet:%'").get().n).toBe(0);
 });

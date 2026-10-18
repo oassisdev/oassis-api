@@ -12,9 +12,13 @@
  * every route, which is what tells them there is something to buy here.
  */
 
+import { fichaDe } from "./mcp-schema";
+import { feedbackRequest } from "./feedback";
+import { productPath } from "./api-routes";
+import { agentServicePaths } from "./agents/openapi";
 import type { Context } from "hono";
 import { actDoc, batchDoc, crawlDoc, doc, mapDoc, searchDoc, sessionDoc } from "./docs";
-import { origin, prefixForHost } from "./http";
+import { origin } from "./http";
 import { PER_FORMAT, PRICES, inDollars, mapPrice } from "./billing/prices";
 import { VERSION } from "./version";
 import type { Env } from "./types";
@@ -93,8 +97,9 @@ function agentTaskPaths(): Record<string, unknown> {
   const unauthorized = { "401": { description: "Missing or invalid task-scoped access token." } };
   const notFound = { "404": { description: "Task not found or task token does not match." } };
   return {
-    ["/agent/v1/tasks"]: {
+    ["/tasks/v1/research"]: {
       post: {
+        tags:["Research Tasks"],
         summary: "Start a research task",
         description:
           "Answers a question by reading public pages, with sources, progress and cost. With an API key, HTTP reserves credits and settles actual cost. Without a key, x402 pays a fixed execution budget in limits.max_cost_usd. MCP start requires an API key and reserves credits, settling actual cost. Returns access_token for free status/cancel. For retries send the same Task-Token and Idempotency-Key.",
@@ -140,8 +145,9 @@ function agentTaskPaths(): Record<string, unknown> {
         "x-mcp-tool": "web_task_start",
       },
     },
-    ["/agent/v1/tasks/{task_id}"]: {
+    ["/tasks/v1/research/{task_id}"]: {
       get: {
+        tags:["Research Tasks"],
         summary: "Read a task",
         description:
           "Status, progress, operations, sources with the evidence used, limitations, the result when there is one, and billing: reserved, spent, released and settlement.",
@@ -152,8 +158,9 @@ function agentTaskPaths(): Record<string, unknown> {
         "x-mcp-tool": "web_task_status",
       },
     },
-    ["/agent/v1/tasks/{task_id}/cancel"]: {
+    ["/tasks/v1/research/{task_id}/cancel"]: {
       post: {
+        tags:["Research Tasks"],
         summary: "Cancel a task",
         description:
           "Stops new operations and returns the unused budget. An operation already running cannot always be stopped remotely: it is charged as it completes. Cancelling a finished task changes nothing.",
@@ -174,16 +181,15 @@ function agentTaskPaths(): Record<string, unknown> {
 
 export function openapi(c: Context<{ Bindings: Env }>): Record<string, unknown> {
   const base = origin(c);
-  const family = prefixForHost(c);
   const payTo = c.env.X402_PAY_TO;
   const network = (c.env.X402_NETWORK ?? "base") === "base" ? "eip155:8453" : "eip155:84532";
 
-  const paths: Record<string, unknown> = { ...agentTaskPaths() };
+  const paths: Record<string, unknown> = { ...agentTaskPaths(), ...agentServicePaths() };
   for (const { path, build, tool, summary, from } of PAID) {
     const described = build(c) as Doc;
     /** Some routes document a family of paths rather than one, and carry no single line. */
     const about = described.description ?? Object.values(described.endpoints ?? {})[0] ?? summary;
-    const full = `${family}/${path}`;
+    const full = productPath(path);
     paths[full] = {
       get: {
         summary: `What ${full} expects`,
@@ -192,6 +198,7 @@ export function openapi(c: Context<{ Bindings: Env }>): Record<string, unknown> 
       },
       post: {
         summary,
+        tags:[full.startsWith("/tasks/")?"Extraction Tasks":"Web Tools"],
         description: about,
         operationId: tool,
         security: [{apiKey:[]},{}],
@@ -223,6 +230,17 @@ export function openapi(c: Context<{ Bindings: Env }>): Record<string, unknown> 
         "x-mcp-tool": tool,
       },
     };
+  }
+
+  paths['/web/v1/session/{id}']={delete:{tags:['Web Tools'],operationId:'web_session_close',summary:'Close a browser session',description:'Stops the browser. Outstanding browser time is settled; there is no additional close fee.',security:[{apiKey:[]},{}],parameters:[{name:'id',in:'path',required:true,schema:{type:'string'}}],responses:{'200':{description:'Session closed.'},'401':{description:'Invalid API key.'},'404':{description:'Session not found or owned by another caller.'}}}};
+  paths['/web/v1/feedback']={post:{tags:['Web Tools'],operationId:'web_feedback',summary:'Report a result',description:'Free; an API key is optional.',requestBody:{required:true,content:{'application/json':{schema:fichaDe(feedbackRequest)}}},responses:{'200':{description:'Feedback recorded.'},'400':{description:'Invalid feedback.'},'401':{description:'Invalid API key.'},'429':{description:'Reporting limit reached.'}}}};
+  paths['/web/v1/account']={get:{tags:['Account'],operationId:'account_credits',summary:'Read available and reserved account credits',security:[{apiKey:[]}],responses:{'200':{description:'Account and credit balance.'},'401':{description:'API key required.'}}}};
+
+  for(const [name,tool] of [['scrape/batch','web_batch_status'],['crawl','web_crawl_status']] as const){
+   const path='/tasks/v1/'+name+'/{id}';
+   const shared={tags:['Extraction Tasks'],security:[{apiKey:[]},{}],parameters:[{name:'id',in:'path',required:true,schema:{type:'string'}}]};
+   paths[path]={get:{...shared,operationId:tool,summary:'Read '+name+' status and results',description:'Free for the owner. Authenticate with the same account key or the wallet credentials used to create the job.',responses:{'200':{description:'Job status and results.'},'401':{description:'Invalid API key.'},'404':{description:'Job not found or owned by another caller.'}}}};
+   paths[path+'/cancel']={post:{...shared,operationId:tool+'_cancel',summary:'Cancel '+name,description:'Stops pending work and refunds work that never ran. The result remains available to the owner.',responses:{'200':{description:'Job cancellation result.'},'401':{description:'Invalid API key.'},'404':{description:'Job not found or owned by another caller.'}}}};
   }
 
   return {
@@ -293,18 +311,21 @@ export function llmsTxt(c: Context<{ Bindings: Env }>): string {
     lines.push("");
   }
 
-  lines.push("## Agent tasks");
+  lines.push("## Research Tasks");
   lines.push("");
   lines.push(
     "A research task answers a question from public pages, with sources, progress and cost. Tasks over MCP require an API key and sufficient credits. HTTP start uses x402 for a fixed execution budget; status/cancel use Task-Token and are free.",
   );
   lines.push("");
-  lines.push(`- POST ${base}/agent/v1/tasks: start a task (202, with a Location header)`);
-  lines.push(`- GET ${base}/agent/v1/tasks/{task_id}: read status, sources, result and billing`);
-  lines.push(`- POST ${base}/agent/v1/tasks/{task_id}/cancel: stop a task (free with Task-Token; no automatic on-chain refund)`);
+  lines.push(`- POST ${base}/tasks/v1/research: start a task (202, with a Location header)`);
+  lines.push(`- GET ${base}/tasks/v1/research/{task_id}: read status, sources, result and billing`);
+  lines.push(`- POST ${base}/tasks/v1/research/{task_id}/cancel: stop a task (free with Task-Token; no automatic on-chain refund)`);
   lines.push("- MCP tools: web_task_start, web_task_status, web_task_cancel");
   lines.push("");
 
+  lines.push("## Scheduled Agents");
+  lines.push("GET /agents/v1 lists price-watch, web-watch and competitor-monitor. GET /agents/v1/{agent} describes parameters. POST /agents/v1/{agent} creates a service with an API key. GET /agents/v1/services lists your services; GET /agents/v1/services/{id} reads its report. POST /agents/v1/services/{id}/cancel cancels future runs and keeps the report. These services are currently free and have no MCP tools.");
+  lines.push("");
   lines.push("## MCP");
   lines.push("");
   lines.push(`Streamable HTTP at \`${base}/mcp\`. MCP includes 100 trial credits for scrape and map. Other tools require an API key; verified accounts receive 1,000 welcome credits.`);

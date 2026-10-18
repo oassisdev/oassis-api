@@ -1,4 +1,5 @@
 /** HTTP tasks: x402 on start; task capability on status/cancel. */
+import { RESEARCH_ROUTE } from '../api-routes';
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { x402 } from '../billing/x402';
@@ -11,18 +12,19 @@ import { startPublicTask, publicTask, taskIdentity } from './public-access';
 import { kick, cancelTask } from './service';
 
 export const agentRoutes=new Hono<{Bindings:Env}>();
-agentRoutes.use('/agent/v1/*',async(c,next)=>{await next();c.header('cache-control','no-store');});
-agentRoutes.get('/agent/v1/tasks',async(c)=>{
+agentRoutes.use('/tasks/v1/*',async(c,next)=>{await next();c.header('cache-control','no-store');});
+agentRoutes.get(RESEARCH_ROUTE,async(c)=>{
  const gate=x402(c.env);if(!gate)return c.json({success:false,error:'payment_unavailable'},503);
- return gate(c,async()=>{c.res=c.json({endpoint:'POST /agent/v1/tasks',access:'x402 on start; Task-Token on status/cancel',pricing:'fixed execution budget',default_price:'$0.10'});});
+ return gate(c,async()=>{c.res=c.json({endpoint:'POST /tasks/v1/research',access:'x402 on start; Task-Token on status/cancel',pricing:'fixed execution budget',default_price:'$0.10'});});
 });
-agentRoutes.post('/agent/v1/tasks',async(c)=>{
+agentRoutes.post(RESEARCH_ROUTE,async(c)=>{
  const key=await requestAccount(c.env?.BILLING,c.req.raw.headers);
  if(key==='invalid')return c.json({error:'invalid_api_key'},401);
  if(key){
   const body=await c.req.json().catch(()=>null);const idem=c.req.header('idempotency-key');
   if(!idem||!/^[-a-zA-Z0-9_:]{1,100}$/.test(idem))return c.json({error:'Idempotency-Key is required.'},400);
   const out=await startTask(c.env,{account:key.id,body,idempotencyKey:idem,baseUrl:c.env.BASE_URL});
+  if(out.ok)c.header('location',out.location);
   return out.ok?c.json({...out,task_id:out.taskId,billing:{channel:'credits',pricing:'reserve maximum; charge actual cost; release unused credits'}},202):c.json(out.error,out.error.status as 400);
  }
  const gate=x402(c.env);if(!gate)return c.json({success:false,error:'payment_unavailable',message:'x402 is unavailable. No API key is required.'},503);
@@ -58,21 +60,21 @@ agentRoutes.post('/agent/v1/tasks',async(c)=>{
  const status=response?.status??c.res.status;
  if(accepted&&status>=200&&status<300){
   // Start the alarm only after x402 has successfully settled the payment.
-  await recordWalletPayment(c.env.BILLING,walletIdentity(wallet!),accepted.priceMicros,'/agent/v1/tasks').catch(e=>console.error('task payment log',e));
+  await recordWalletPayment(c.env.BILLING,walletIdentity(wallet!),accepted.priceMicros,c.req.path).catch(e=>console.error('task payment log',e));
   await c.env.BILLING.prepare("UPDATE accounts SET note=json_set(note,'$.paid',1) WHERE id=?").bind(accepted.account).run();
   await kick(c.env,accepted.taskId).catch(e=>console.error('task kick',e));
  }else if(accepted){await cancelTask(c.env,accepted.account,accepted.taskId);}
  return response||c.res;
 });
-agentRoutes.get('/agent/v1/tasks/:id',async(c)=>{
+agentRoutes.get(RESEARCH_ROUTE+'/:id',async(c)=>{
  const key=await requestAccount(c.env?.BILLING,c.req.raw.headers);
  if(key==='invalid')return c.json({error:'invalid_api_key'},401);
- if(key){const out=await getTask(c.env,key.id,c.req.param('id'));return c.json("body" in out?out.body:out,out.status as 200);}
- const out=await publicTask(c.env,c.req.param('id'),c.req.header('task-token')||'');return c.json(out.body,out.status as 200);
+ if(key){const out=await getTask(c.env,key.id,(c.req.param('id')||''));return c.json("body" in out?out.body:out,out.status as 200);}
+ const out=await publicTask(c.env,(c.req.param('id')||''),c.req.header('task-token')||'');return c.json(out.body,out.status as 200);
 });
-agentRoutes.post('/agent/v1/tasks/:id/cancel',async(c)=>{
+agentRoutes.post(RESEARCH_ROUTE+'/:id/cancel',async(c)=>{
  const key=await requestAccount(c.env?.BILLING,c.req.raw.headers);
  if(key==='invalid')return c.json({error:'invalid_api_key'},401);
- if(key){const out=await cancelTask(c.env,key.id,c.req.param('id'));return c.json("body" in out?out.body:out,out.status as 200);}
- const out=await publicTask(c.env,c.req.param('id'),c.req.header('task-token')||'',true);return c.json(out.body,out.status as 200);
+ if(key){const out=await cancelTask(c.env,key.id,(c.req.param('id')||''));return c.json("body" in out?out.body:out,out.status as 200);}
+ const out=await publicTask(c.env,(c.req.param('id')||''),c.req.header('task-token')||'',true);return c.json(out.body,out.status as 200);
 });

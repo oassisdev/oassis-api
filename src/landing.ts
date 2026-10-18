@@ -285,7 +285,7 @@ ${LANDING_STYLE}
 <body class="oassis-home">
 <a class="skip-link" href="#main">Skip to content</a>
 <div class="wrap">
-<header class="site-nav"><a class="brand" href="/" aria-label="oassis home"><img src="/favicon.svg" alt="" width="35" height="35">oassis</a><nav aria-label="Main navigation"><a href="#tools">Web Tools</a><a href="#task-api">Tasks</a><a href="/docs">Docs</a><a class="nav-reference" href="${api}/openapi.json">API reference</a><a class="nav-pricing" href="#pricing">Pricing</a><a href="/login">Log In</a><a class="nav-connect" href="/signup">Sign Up</a></nav></header>
+<header class="site-nav"><a class="brand" href="/" aria-label="oassis home"><img src="/favicon.svg" alt="" width="35" height="35">oassis</a><nav aria-label="Main navigation"><a href="#tools">Web Tools</a><a href="#task-api">Tasks</a><a href="/agents">Agents</a><a href="/docs">Docs</a><a class="nav-reference" href="${api}/openapi.json">API reference</a><a class="nav-pricing" href="#pricing">Pricing</a><a href="/login">Log In</a><a class="nav-connect" href="/signup">Sign Up</a></nav></header>
 <main id="main">
 <section class="launch" id="tools" aria-labelledby="hero-title">
 <div class="launch-top"><h1 id="hero-title">Give your agent<br>the web to work with.</h1><div class="launch-copy"><p>Find the right page. Read what matters. Open a browser and take the next step. Web infrastructure for AI agents, through one API.</p><div class="launch-actions"><a class="button" href="#try">Connect via MCP</a><a class="button secondary" href="/docs">Explore the API</a></div><p class="connection-note">Try MCP with 100 credits. Sign up for 1,000 welcome credits and create your API key.</p></div></div>
@@ -332,7 +332,7 @@ web_session_close { "sessionId": "example-session" }</code></pre></div>
 <div class="task-heading"><div><p class="task-kicker">Tasks</p><h2 id="task-title">Give your agent a research task.</h2><p class="section-lead">Describe what you need to find out. Oassis searches and reads public pages, then returns an answer with sources. Track progress or cancel the task while it runs.</p></div><a class="button" href="/task-api">View Tasks documentation</a></div>
 <div class="task-levels" aria-label="Two levels of web access"><div><strong>Delegate the research</strong><span>Task: plan, search, read and synthesize</span></div><div><strong>Control each operation</strong><span>Web tools: search, scrape, crawl, browser and act</span></div></div>
 <div class="task-demo"><div class="task-request"><div class="task-demo-top"><h3>Start a task</h3><div role="group" aria-label="Task example transport"><button type="button" class="task-transport" data-task-transport="http" aria-pressed="true" aria-controls="task-http">HTTP</button><button type="button" class="task-transport" data-task-transport="mcp" aria-pressed="false" aria-controls="task-mcp">MCP</button></div></div>
-<pre id="task-http"><code>POST ${api}/agent/v1/tasks
+<pre id="task-http"><code>POST ${api}/tasks/v1/research
 Content-Type: application/json
 
 {
@@ -359,7 +359,7 @@ web_task_cancel
 { "id": "TASK_ID", "access_token": "TASK_TOKEN" }</code></pre>
 <p class="muted">Illustrative request. No requests are sent. Start returns a task ID and an <code>access_token</code>; keep both for status and cancellation.</p></div>
 <div class="task-result"><p class="demo-label">Illustrative lifecycle</p><h3>Follow the work.</h3><ol><li><strong>Queued</strong><span>The task is ready to run.</span></li><li><strong>Running</strong><span>Search, read sources and prepare the answer.</span></li><li><strong>Result</strong><span>Inspect the answer, source links and any missing evidence.</span></li></ol><p>Research can finish with a partial answer when evidence is missing. Check the returned status and result.</p><p class="muted">Task currently supports public-page research. Use the web tools below to orchestrate crawling or browser actions yourself.</p></div></div>
-<div class="task-operations"><div><h3>Start</h3><code>POST /agent/v1/tasks</code><p>MCP: <code>web_task_start</code></p></div><div><h3>Status</h3><code>GET /agent/v1/tasks/{id}</code><p>MCP: <code>web_task_status</code></p></div><div><h3>Cancel</h3><code>POST /agent/v1/tasks/{id}/cancel</code><p>MCP: <code>web_task_cancel</code></p></div></div>
+<div class="task-operations"><div><h3>Start</h3><code>POST /tasks/v1/research</code><p>MCP: <code>web_task_start</code></p></div><div><h3>Status</h3><code>GET /tasks/v1/research/{id}</code><p>MCP: <code>web_task_status</code></p></div><div><h3>Cancel</h3><code>POST /tasks/v1/research/{id}/cancel</code><p>MCP: <code>web_task_cancel</code></p></div></div>
 <p class="task-billing"><strong>MCP: API key and credits; reserve maximum budget and settle actual cost.</strong> HTTP/x402: creation charges the selected execution budget upfront (${escape(inDollars(DEFAULT_LIMITS.max_cost_usd * 1_000_000))} by default). Status and cancellation are free with <code>Task-Token</code>. No automatic on-chain refund of unused budget.</p>
 </section>
 <section class="content-section" id="tool-catalog">
@@ -456,8 +456,8 @@ on-chain; tasks use a fixed execution budget with no automatic on-chain refund.<
 <details><summary>Am I charged when something fails?</summary><p>Status and cancellation are free for the owning account. HTTP payment and execution are separate parts of the request: inspect the response and payment receipt when troubleshooting. For Tasks, the selected package is charged upfront and a failed, partial or cancelled result does not trigger an automatic on-chain refund.</p></details>
 <h3>Research tasks</h3>
 <details><summary>What can a Task do today?</summary><p>Research public pages: plan, search, read and synthesize an answer with source links. You can provide up to five starting URLs. Tasks currently do not orchestrate site crawling, persistent browser sessions or browser actions; use Web Tools to build those workflows.</p></details>
-<details><summary>How do I start a Task and get the result?</summary><p>Use <code>web_task_start</code> over MCP or <code>POST /agent/v1/tasks</code> over HTTP. Keep the returned ID and <code>access_token</code>. Follow progress with <code>web_task_status</code> or <code>GET /agent/v1/tasks/{id}</code>, sending <code>Task-Token</code> for HTTP. <a href="/task-api">See all Task examples</a>.</p></details>
-<details><summary>Can I cancel a Task?</summary><p>Yes. Use <code>web_task_cancel</code> with the ID and access token, or <code>POST /agent/v1/tasks/{id}/cancel</code> with the <code>Task-Token</code> header. Cancellation requests the task to stop; inspect its status to confirm the outcome. HTTP cancellation does not automatically refund the package.</p></details>
+<details><summary>How do I start a Task and get the result?</summary><p>Use <code>web_task_start</code> over MCP or <code>POST /tasks/v1/research</code> over HTTP. Keep the returned ID and <code>access_token</code>. Follow progress with <code>web_task_status</code> or <code>GET /tasks/v1/research/{id}</code>, sending <code>Task-Token</code> for HTTP. <a href="/task-api">See all Task examples</a>.</p></details>
+<details><summary>Can I cancel a Task?</summary><p>Yes. Use <code>web_task_cancel</code> with the ID and access token, or <code>POST /tasks/v1/research/{id}/cancel</code> with the <code>Task-Token</code> header. Cancellation requests the task to stop; inspect its status to confirm the outcome. HTTP cancellation does not automatically refund the package.</p></details>
 <details><summary>What does a partial research result mean?</summary><p>The research could not establish everything requested from the available evidence. Check the result's sources and missing evidence before using the answer. Refine the question or provide more relevant public URLs for another task.</p></details>
 <h3>Web content and browser workflows</h3>
 <details><summary>Which output formats can I request?</summary><p>Depending on the tool, page outputs include Markdown, HTML, links, controls, accessibility, elements, screenshots, PDF and structured JSON. Select the formats your application needs; multiple HTTP outputs can add to the price. <a href="/web-scraping-api">See extraction examples</a>.</p></details>
@@ -543,8 +543,7 @@ export function servedText(c: Context<{ Bindings: Env }>): (url: string) => stri
     // Answer for the host that was asked for. Serving api.oassis.dev's sitemap to a
     // map of oassis.dev lists urls the map then throws away as belonging elsewhere.
     const base = url.origin;
-    const label = url.hostname.split(".")[0] ?? "";
-    const prefix = label === "web" ? "/v1" : "/web/v1";
+    const prefix = "/web/v1";
     if (url.pathname === "/robots.txt") return robotsFor(base);
     if (url.pathname === "/sitemap.xml") return sitemapFor(base, prefix);
     // Ours, but not a file we serve: say so rather than letting it hang on the network.

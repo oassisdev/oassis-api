@@ -98,12 +98,12 @@ export const sessionDoc = (c: Context<{ Bindings: Env }>) => ({
  * Batches. A job answers with a `jobId` instead of the work: fifty pages do not fit
  * in one request, and nobody should hold a connection open for minutes.
  */
-export const batchDoc = (c: Context<{ Bindings: Env }>) => ({
+export const batchDoc = (_c: Context<{ Bindings: Env }>) => ({
   endpoints: {
-    [`POST ${prefix(c)}/scrape/batch`]:
+    [`POST /tasks/v1/scrape/batch`]:
       "A batch of scrapes: queues one scrape per url you give it. Same fields as /scrape but with `urls` (2–50) and no `url`. Returns a `jobId`. It discovers nothing — for that, use /crawl.",
-    [`GET ${prefix(c)}/scrape/batch/:id`]: "Collects the job: status, how many are done, and the results so far. `?limit=1..50`.",
-    [`DELETE ${prefix(c)}/scrape/batch/:id`]: "Cancels the job. The urls that never ran are refunded.",
+    [`GET /tasks/v1/scrape/batch/:id`]: "Collects the job: status, how many are done, and the results so far. `?limit=1..50`.",
+    [`POST /tasks/v1/scrape/batch/:id/cancel`]: "Cancels the job. The urls that never ran are refunded.",
   },
   notes: [
     "Charged up front, one scrape per url. A url that fails outright and a url served from the cache are refunded together when the job ends, as a single movement in your account.",
@@ -140,12 +140,12 @@ export const mapDoc = (c: Context<{ Bindings: Env }>) => ({
  * `crawl`: follow the links and read the pages. A crawl is a batch that feeds itself,
  * so it answers with a `jobId` and is collected the same way.
  */
-export const crawlDoc = (c: Context<{ Bindings: Env }>) => ({
+export const crawlDoc = (_c: Context<{ Bindings: Env }>) => ({
   endpoints: {
-    [`POST ${prefix(c)}/crawl`]:
+    [`POST /tasks/v1/crawl`]:
       "Starts a crawl from `url`. Same fields as /scrape plus `limit` (pages, default 25, max 200), `maxDepth` (default 2) and the site filters. Returns a `jobId`.",
-    [`GET ${prefix(c)}/crawl/:id`]: "Collects it: status, pages read, discovered, still queued, and the pages. `?limit=1..50`.",
-    [`DELETE ${prefix(c)}/crawl/:id`]: "Cancels it. The pages never read are refunded.",
+    [`GET /tasks/v1/crawl/:id`]: "Collects it: status, pages read, discovered, still queued, and the pages. `?limit=1..50`.",
+    [`POST /tasks/v1/crawl/:id/cancel`]: "Cancels it. The pages never read are refunded.",
   },
   notes: [
     "Charged up front for the pages it is allowed to read. A crawl that finds twelve pages when it was allowed thirty refunds the eighteen it never touched, in one movement.",
