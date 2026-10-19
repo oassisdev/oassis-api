@@ -38,7 +38,9 @@ function targetsOf(agent: AgentName, config: Record<string, unknown>): string[] 
   if (agent === "competitor-monitor") {
     const domain = String(config.domain);
     const sections = config.sections as string[];
-    return sections.map((s) => new URL(s, domain).href);
+    return sections.map((s) => new URL(s, domain))
+      .filter((url) => url.origin === new URL(domain).origin)
+      .map((url) => url.href);
   }
   return config.urls as string[];
 }
@@ -50,7 +52,14 @@ export async function createService(env: Env, account: string, agent: AgentName,
     return { ok: false, status: 400, error: `${issue?.path.join(".") || "body"}: ${issue?.message}` };
   }
   const config = parsed.data as Record<string, unknown>;
-  for (const url of targetsOf(agent, config)) {
+  if (agent === "competitor-monitor") {
+    const refusal = checkPublicUrl(String(config.domain));
+    if (refusal !== null) return { ok: false, status: 400, error: `domain must be a public http(s) address (${refusal}).` };
+  }
+  const targets = targetsOf(agent, config);
+  if (agent === "competitor-monitor" && targets.length !== (config.sections as string[]).length)
+    return { ok: false, status: 400, error: "sections: every path must stay on the configured domain." };
+  for (const url of targets) {
     const refusal = checkPublicUrl(url);
     if (refusal !== null) return { ok: false, status: 400, error: `${url} is not a public http(s) address (${refusal}).` };
   }

@@ -102,7 +102,7 @@ Over HTTP each one is paid. Each one is served at `api.oassis.dev/web/v1/…` an
 | POST | `/web/v1/scrape` | Reads a page or document in the formats you ask for: `markdown`, `html`, `links`, `controls`, `accessibility`, `elements`, `screenshot`, `pdf`, `json` | `web_scrape` | Per output (see pricing) |
 | POST | `/web/v1/session` | Opens a browser on a URL and returns its controls, each with a `ref` | `web_session_open` | $0.005 for the first minute + outputs |
 | POST | `/web/v1/act` | Click, type, select, wait, scroll on an open session | `web_act` | $0.0005 per action + outputs |
-| DELETE | `/web/v1/session/:id` | Closes a session | `web_session_close` | Free (time used is billed) |
+| POST | `/web/v1/session/:id/close` | Closes a session | `web_session_close` | Free (time used is billed) |
 | POST | `/tasks/v1/scrape/batch` | Reads a list of URLs as a background job | `web_scrape_batch` | One scrape per URL |
 | GET | `/tasks/v1/scrape/batch/:id` | Status and results of a batch | `web_batch_status` | Free |
 | POST | `/tasks/v1/scrape/batch/:id/cancel` | Cancel a batch | `web_batch_status` with cancel | Free |
@@ -279,7 +279,7 @@ See [billing operations](docs/prepaid-billing.md) for migrations, Stripe activat
 
 The same paths are used on every API host. There are no old-path aliases or redirects.
 
-- Web Tools: `/web/v1/scrape`, `/map`, `/search`, `/session`, `/act`, `/feedback`. Session close: `DELETE /web/v1/session/:id`.
+- Web Tools: `/web/v1/scrape`, `/map`, `/search`, `/session`, `/act`, `/feedback`. Session close: `POST /web/v1/session/:id/close`.
 - Extraction Tasks: `POST /tasks/v1/scrape/batch` and `POST /tasks/v1/crawl`; status: `GET` on the creation path plus `/:id`; cancellation: `POST` on that status path plus `/cancel`.
 - Research Tasks: `POST /tasks/v1/research`; `GET /tasks/v1/research/:id`; `POST /tasks/v1/research/:id/cancel`.
 - Agent catalog: `GET /agents/v1` and `GET /agents/v1/:agent`. Create a service: `POST /agents/v1/:agent`.

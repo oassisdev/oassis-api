@@ -158,3 +158,25 @@ describe("agent task paths", () => {
     expect(Object.keys(spec.paths).some((p) => p.endsWith("/tasks/v1/research/{task_id}/cancel"))).toBe(true);
   });
 });
+
+describe('current access and route definitions',()=>{
+ const spec=openapi(ctx()) as any;
+ it('publishes validated nested schemas, extraction bounds and supported formats',()=>{
+  const schema=(path:string)=>spec.paths[path].post.requestBody.content['application/json'].schema;
+  const batch=schema('/tasks/v1/scrape/batch');expect(batch.required).toContain('urls');expect(batch.properties.urls).toMatchObject({type:'array',minItems:2,maxItems:50});expect(batch.properties.formats.items.enum).not.toContain('pdf');
+  const crawl=schema('/tasks/v1/crawl');expect(crawl.properties.limit).toMatchObject({minimum:1,maximum:200,default:25});
+  const act=schema('/web/v1/act');expect(act.properties.actions).toMatchObject({type:'array',maxItems:25});expect(act.properties.wait.type).toBe('object');expect(act.properties.binaryAs.enum).toEqual(['base64']);expect(act.properties.json.properties.model).toBeUndefined();expect(schema('/web/v1/scrape').oneOf).toHaveLength(2);
+  expect(schema('/tasks/v1/research').properties.limits.properties.max_cost_usd).toMatchObject({minimum:0.03,maximum:1,default:0.1});
+ });
+ it('distinguishes documentation challenges, asynchronous acceptance and wallet settlement',()=>{
+  expect(spec.paths['/web/v1/scrape'].get.responses['402']).toBeDefined();expect(spec.paths['/web/v1/scrape'].get.responses['200']).toBeUndefined();
+  expect(spec.paths['/tasks/v1/research'].post.responses['202'].description).toContain('not completed');
+  expect(spec.paths['/mcp'].post.responses['200'].description).toContain('result.isError');
+  const text=llmsTxt(ctx());expect(text).toContain('no automatic on-chain refund');expect(text).toContain('POST /agents/v1/services/{id}/cancel');expect(text).toContain('GET /tasks/v1/scrape/batch/{id}');expect(text).toContain('POST /web/v1/session/{id}/close');expect(text).not.toContain('Nothing is charged for work that did not happen');
+ });
+ it('publishes shared credits and only definitive product routes',()=>{
+  expect(spec['x-credits']).toMatchObject({unitUsd:0.002,mcpTrialCredits:100,welcomeCredits:1000,packages:[{usd:5,credits:2500},{usd:20,credits:10000},{usd:50,credits:25000}]});
+  expect(Object.keys(spec.paths).some(p=>p.startsWith('/v1/')||p.startsWith('/agent/v1/')||p==='/web/v1/crawl'||p==='/web/v1/scrape/batch')).toBe(false);
+  for(const path of ['/tasks/v1/crawl/{id}/cancel','/tasks/v1/scrape/batch/{id}/cancel'])expect(spec.paths[path].post.description).toContain('no automatic on-chain refund');
+ });
+});

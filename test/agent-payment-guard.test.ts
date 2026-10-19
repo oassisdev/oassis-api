@@ -96,3 +96,16 @@ describe("planner replies with extra or empty fields", () => {
   });
 });
 
+
+describe("research missing requirements", () => {
+  it.each(["None", "nothing", "N/A", "Nada.", "no missing information"])("normalizes the exact absence marker %s", async (marker) => {
+    const response = { summary: "A book costs £51.77.", findings: [{ claim: "The price is £51.77.", source_ids: ["s1"] }], missing: [marker] };
+    const out = await synthesize(fakeAi([{ response }]), doc);
+    expect(out).toEqual({ result: { ...response, missing: [] } });
+  });
+  it("preserves genuine gaps even when mixed with an absence marker", async () => {
+    const response = { summary: "One price was found.", findings: [{ claim: "The price is £51.77.", source_ids: ["s1"] }], missing: ["None", "The second product's price was not found.", "Nothing is known about the requested delivery cost."] };
+    const out = await synthesize(fakeAi([{ response }]), doc);
+    expect(out).toEqual({ result: { ...response, missing: response.missing.slice(1) } });
+  });
+});

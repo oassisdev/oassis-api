@@ -1,20 +1,18 @@
 /**
  * The machine-readable catalogue: `/openapi.json` and `/llms.txt`.
  *
- * Both are **generated from the same objects the endpoints answer their own GET with**, so
- * there is no second copy of the documentation to fall out of date. The types come from the
- * house style those docs are written in — `"string — page to process"`, `"array — …"`,
- * `"{ fullPage, type }"` — and a test fails if a field is ever written in a way that cannot
- * be typed, which is the only way this stays honest without a schema compiler.
- *
- * It exists for discovery. A directory, a crawler or an agent that finds this API has no
- * manual to read: this is the manual, and it carries the price and the payment terms of
- * every route, which is what tells them there is something to buy here.
+ * Routes, prices and descriptions follow the runtime catalogue. Request schemas come
+ * from the execution validators, including nested options and bounds. llms.txt lists
+ * the same operations by product family, including free lifecycle endpoints.
+ * Payment challenges, accepted work and settled wallet payments are distinct states.
  */
 
 import { fichaDe } from "./mcp-schema";
 import { feedbackRequest } from "./feedback";
 import { productPath } from "./api-routes";
+import { CREDIT_GUIDE, CREDIT_MICROS, MCP_TRIAL_CREDITS, WELCOME_CREDITS, CREDIT_PACKAGES } from "./billing/credits";
+import { scrapeRequest, sessionRequest, actRequest, batchRequest, mapRequest, crawlRequest, searchRequest, LIGHT_FORMATS } from "./schema";
+import { taskRequest } from "./agent/request";
 import { agentServicePaths } from "./agents/openapi";
 import type { Context } from "hono";
 import { actDoc, batchDoc, crawlDoc, doc, mapDoc, searchDoc, sessionDoc } from "./docs";
@@ -77,66 +75,47 @@ export function fieldType(prose: string): { type: string; description: string } 
   return null;
 }
 
-function properties(request: Record<string, string> | undefined): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const [name, prose] of Object.entries(request ?? {})) {
-    const typed = fieldType(prose);
-    if (!typed) continue;
-    out[name] = { type: typed.type, description: typed.description };
-  }
-  return out;
+/** Publish the same bounds and nested fields that validate execution requests. */
+function requestSchema(path: typeof PAID[number]['path']) {
+  const schema = { scrape: scrapeRequest, session: sessionRequest, act: actRequest, 'scrape/batch': batchRequest, map: mapRequest, crawl: crawlRequest, search: searchRequest }[path];
+  const options = path === 'session' ? { omit: ['html'], required: ['url'] }
+    : path === 'act' ? { omit: ['html'], extra: fichaDe(sessionRequest, { omit: ['html','url'] }).properties }
+    : path === 'crawl' || path === 'scrape/batch' ? { narrow: { formats: { type: 'array', items: { type: 'string', enum: [...LIGHT_FORMATS] }, default: ['markdown'] } } } : {};
+  return { ...fichaDe(schema, options),
+    ...(path === 'scrape' ? { oneOf: [{ required: ['url'], not: { required: ['html'] } }, { required: ['html'], not: { required: ['url'] } }] } : {}),
+  };
 }
 
 /** The OpenAPI document, built for whoever is asking: the host decides the paths. */
-/**
- * Agent tasks are paid from an account balance, not per request over x402, so they carry no
- * x-x402 quote. They need an API key, and the reserve is stated where a caller reads the price.
- */
+/** Research Tasks support shared account credits or a fixed x402 budget. */
 function agentTaskPaths(): Record<string, unknown> {
   const bearer = [{ apiKey: [] },{ taskToken: [] }];
-  const unauthorized = { "401": { description: "Missing or invalid task-scoped access token." } };
+  const unauthorized = { "401": { description: "Missing or invalid owner API key or task-scoped access token." } };
   const notFound = { "404": { description: "Task not found or task token does not match." } };
   return {
     ["/tasks/v1/research"]: {
+      get: { tags: ['Discovery'], summary: 'Describe Research Tasks and quote the execution budget', responses: { '402': { description: 'Description and x402 challenge only; nothing is executed or paid.' }, '503': { description: 'Wallet payment unavailable.' } } },
       post: {
         tags:["Research Tasks"],
         summary: "Start a research task",
         description:
-          "Answers a question by reading public pages, with sources, progress and cost. With an API key, HTTP reserves credits and settles actual cost. Without a key, x402 pays a fixed execution budget in limits.max_cost_usd. MCP start requires an API key and reserves credits, settling actual cost. Returns access_token for free status/cancel. For retries send the same Task-Token and Idempotency-Key.",
+          "Answers a question by reading public pages, with sources, progress and cost. With an API key, HTTP reserves credits and settles actual cost. Without a key, x402 pays a fixed execution budget in limits.max_cost_usd. MCP start requires an API key and reserves credits, settling actual cost. With an API key, use the owning key for free status/cancel and send Idempotency-Key (required, maximum 100 characters). The x402 response returns access_token: send it as Task-Token for status/cancel. For x402 retries send the same Task-Token and Idempotency-Key (maximum 200 characters). A 202 confirms acceptance, not a completed result.",
         operationId: "web_task_start",
         security: [{apiKey:[]},{}],
         "x-x402": { protocol:"x402", pricing:"fixed execution budget", defaultPrice:"$0.10",price:"limits.max_cost_usd (default $0.10)" },
         parameters: [
-          { name: "Idempotency-Key", in: "header", required: false, schema: { type: "string", maxLength: 200 }, description: "Same key and same request return the same task. Same key with a different request is refused with 409." },
+          { name: "Idempotency-Key", in: "header", required: false, schema: { type: "string", maxLength: 200 }, description: "Required for API-key starts (1-100 characters). Optional for x402 starts (1-200 characters); reuse it with the same Task-Token and body to retry. Conflicting payloads return 409." },
         ],
         requestBody: {
           required: true,
           content: {
             "application/json": {
-              schema: {
-                type: "object",
-                required: ["task"],
-                additionalProperties: false,
-                properties: {
-                  task: { type: "string", minLength: 10, maxLength: 2000, description: "What to find out." },
-                  mode: { type: "string", enum: ["research"], default: "research" },
-                  urls: { type: "array", maxItems: 5, items: { type: "string", format: "uri" }, default: [] },
-                  limits: {
-                    type: "object",
-                    additionalProperties: false,
-                    properties: {
-                      max_cost_usd: { type: "number", minimum: 0.03, maximum: 1, default: 0.1 },
-                      max_duration_seconds: { type: "integer", minimum: 30, maximum: 900, default: 180 },
-                      max_steps: { type: "integer", minimum: 1, maximum: 20, default: 10 },
-                    },
-                  },
-                },
-              },
+              schema: { ...fichaDe(taskRequest), additionalProperties: false },
             },
           },
         },
         responses: {
-          "202": { description: "Accepted. The Location header points at the task. Body: task_id, status, location, replayed." },
+          "202": { description: "Accepted, not completed. Location points at the task. Body includes task_id, status and location; x402 also returns access_token. Poll status until a terminal outcome." },
           "400": { description: "The request does not match the contract. Unknown fields and unsupported modes are refused." },
           "402": { description: "Insufficient account credits, or x402 payment required without an API key." },
           "409": { description: "The Idempotency-Key was used with a different request." },
@@ -193,27 +172,31 @@ export function openapi(c: Context<{ Bindings: Env }>): Record<string, unknown> 
     paths[full] = {
       get: {
         summary: `What ${full} expects`,
-        description: "Free and cacheable: the endpoint describes itself, so no key is needed to read it.",
-        responses: { "200": { description: "The description of this endpoint." } },
+        description: "Discovery only: no execution and no charge. Without payment credentials the endpoint returns HTTP 402 with its description and a PAYMENT-REQUIRED challenge. Use /openapi.json or /llms.txt for HTTP 200 documentation.",
+        tags: ["Discovery"],
+        responses: { "402": { description: "Endpoint description and payment challenge; reading the challenge does not pay or execute the operation." } },
       },
       post: {
         summary,
         tags:[full.startsWith("/tasks/")?"Extraction Tasks":"Web Tools"],
-        description: about,
+        description: about + (full.startsWith("/tasks/") ? " Returns a jobId for asynchronous work. A successful start is acceptance, not completion; poll the job status. Account credits can be refunded for unused work; x402 has no automatic on-chain refund." : " HTTP supports the same Bearer API key and shared credits as MCP, or an independent x402 wallet payment."),
         operationId: tool,
         security: [{apiKey:[]},{}],
         requestBody: {
           required: true,
           content: {
             "application/json": {
-              schema: { type: "object", properties: properties(described.request) },
+              schema: requestSchema(path),
               ...(described.example ? { example: described.example } : {}),
             },
           },
         },
         responses: {
           "200": { description: Object.entries(described.response ?? {}).map(([k, v]) => `${k}: ${v}`).join(" · ") || "The result." },
-          "402": { description: "Payment required. The challenge travels in the PAYMENT-REQUIRED header." },
+          "400": { description: "Invalid request; nothing is executed." },
+          "401": { description: "Invalid or revoked API key." },
+          "402": { description: "Insufficient account credits, or x402 payment required. The wallet challenge travels in PAYMENT-REQUIRED; a 402 is not a payment or an execution." },
+          "503": { description: "Operation temporarily unavailable." },
         },
         /**
          * What it costs and how to pay it, where a directory looks for it. The price is the
@@ -225,23 +208,29 @@ export function openapi(c: Context<{ Bindings: Env }>): Record<string, unknown> 
           asset: USDC_BASE,
           ...(payTo ? { payTo } : {}),
           price: described.price ?? `from ${inDollars(from)}`,
-          note: "POST the route unpaid to be quoted the exact price of that call.",
+          note: "POST a valid request unpaid to receive its exact quote. After a successful wallet settlement, PAYMENT-RESPONSE contains the facilitator receipt and transaction hash. A quote is not a payment.",
         },
         "x-mcp-tool": tool,
       },
     };
   }
 
-  paths['/web/v1/session/{id}']={delete:{tags:['Web Tools'],operationId:'web_session_close',summary:'Close a browser session',description:'Stops the browser. Outstanding browser time is settled; there is no additional close fee.',security:[{apiKey:[]},{}],parameters:[{name:'id',in:'path',required:true,schema:{type:'string'}}],responses:{'200':{description:'Session closed.'},'401':{description:'Invalid API key.'},'404':{description:'Session not found or owned by another caller.'}}}};
+  paths['/web/v1/session/{id}/close']={post:{tags:['Web Tools'],operationId:'web_session_close',summary:'Close a browser session',description:'Stops the browser. Outstanding browser time is settled; there is no additional close fee.',security:[{apiKey:[]},{walletPayment:[]}],parameters:[{name:'id',in:'path',required:true,schema:{type:'string'}}],responses:{'200':{description:'Session closed.'},'401':{description:'Invalid API key.'},'404':{description:'Session not found or owned by another caller.'}}}};
   paths['/web/v1/feedback']={post:{tags:['Web Tools'],operationId:'web_feedback',summary:'Report a result',description:'Free; an API key is optional.',requestBody:{required:true,content:{'application/json':{schema:fichaDe(feedbackRequest)}}},responses:{'200':{description:'Feedback recorded.'},'400':{description:'Invalid feedback.'},'401':{description:'Invalid API key.'},'429':{description:'Reporting limit reached.'}}}};
   paths['/web/v1/account']={get:{tags:['Account'],operationId:'account_credits',summary:'Read available and reserved account credits',security:[{apiKey:[]}],responses:{'200':{description:'Account and credit balance.'},'401':{description:'API key required.'}}}};
 
   for(const [name,tool] of [['scrape/batch','web_batch_status'],['crawl','web_crawl_status']] as const){
    const path='/tasks/v1/'+name+'/{id}';
-   const shared={tags:['Extraction Tasks'],security:[{apiKey:[]},{}],parameters:[{name:'id',in:'path',required:true,schema:{type:'string'}}]};
-   paths[path]={get:{...shared,operationId:tool,summary:'Read '+name+' status and results',description:'Free for the owner. Authenticate with the same account key or the wallet credentials used to create the job.',responses:{'200':{description:'Job status and results.'},'401':{description:'Invalid API key.'},'404':{description:'Job not found or owned by another caller.'}}}};
-   paths[path+'/cancel']={post:{...shared,operationId:tool+'_cancel',summary:'Cancel '+name,description:'Stops pending work and refunds work that never ran. The result remains available to the owner.',responses:{'200':{description:'Job cancellation result.'},'401':{description:'Invalid API key.'},'404':{description:'Job not found or owned by another caller.'}}}};
+   const shared={tags:['Extraction Tasks'],security:[{apiKey:[]},{walletPayment:[]}],parameters:[{name:'id',in:'path',required:true,schema:{type:'string'}}]};
+   paths[path]={get:{...shared,operationId:tool,summary:'Read '+name+' status and results',parameters:[...shared.parameters,{name:'limit',in:'query',required:false,schema:{type:'integer',minimum:1,maximum:50,default:50}}],description:'Free for the owner. Authenticate with the same account key or the wallet credentials used to create the job.',responses:{'200':{description:'Job status and results.'},'401':{description:'Invalid API key.'},'404':{description:'Job not found or owned by another caller.'}}}};
+   paths[path+'/cancel']={post:{...shared,operationId:tool+'_cancel',summary:'Cancel '+name,description:'Stops pending work. With account credits, unused and failed reads are refunded; an in-flight page may finish and is billed normally. Settled x402 payments have no automatic on-chain refund. The result remains available to the owner.',responses:{'200':{description:'Job cancellation result.'},'401':{description:'Invalid API key.'},'404':{description:'Job not found or owned by another caller.'}}}};
   }
+
+  paths['/mcp'] = {
+    get: { tags: ['Discovery'], operationId: 'describe_mcp', summary: 'Describe MCP access, credits and tool families', responses: { '200': { description: 'MCP discovery document. No tool is executed.' } } },
+    post: { tags: ['Discovery'], operationId: 'mcp_jsonrpc', summary: 'MCP JSON-RPC transport', description: 'Use initialize, tools/list and tools/call. Bearer API key is optional for discovery and the scrape/map trial; required for other paid tools. Tool errors may be represented by JSON-RPC errors or result.isError in an HTTP 200 response.', security: [{apiKey:[]},{}], requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['jsonrpc','method'], properties: { jsonrpc: {type:'string',enum:['2.0']}, id: {type:['string','number','null']}, method: {type:'string'}, params: {type:'object'} } } } } }, responses: { '200': { description: 'JSON-RPC response; inspect error and result.isError, not only HTTP status.' }, '202': { description: 'Notification accepted without a response body.' } } },
+  };
+  for (const path of ['/openapi.json','/llms.txt']) paths[path] = { get: { tags: ['Discovery'], summary: 'Read the public ' + path.slice(1) + ' catalog', responses: { '200': { description: 'Public documentation; no charge.' } } } };
 
   return {
     openapi: "3.1.0",
@@ -252,12 +241,21 @@ export function openapi(c: Context<{ Bindings: Env }>): Record<string, unknown> 
         "Scrape any page or document to markdown, map and crawl whole sites, drive a real browser, " +
         "and search the web. " +
         "Pay per call with a wallet and no account at all (x402, USDC on Base). MCP includes a 100-credit trial; further use requires an API key and credits. " +
-        "POST any route unpaid and it answers 402 with the exact price of that call.",
+        "Web Tools use /web/v1; asynchronous extraction and research use /tasks/v1; scheduled monitoring services use /agents/v1. A 402 is a quote, not a payment. " + CREDIT_GUIDE,
       "x-mcp": `${base}/mcp`,
       "x-logo": { url: `${origin(c)}/icon-512.png`, altText: "oassis" },
     },
     servers: [{ url: base }],
-    components: { securitySchemes: { apiKey: {type:"http",scheme:"bearer",description:"Oassis API key. Shared account credits; 1 credit = $0.002."}, taskToken: { type: "apiKey", in:"header", name:"Task-Token", description: "Task-scoped access_token, not a customer API key. Status/cancel only." } } },
+    tags: [
+      { name: 'Web Tools', description: 'Individual web operations: /web/v1.' },
+      { name: 'Extraction Tasks', description: 'Asynchronous batch and crawl jobs: /tasks/v1. Poll results; cancellation has its own POST route.' },
+      { name: 'Research Tasks', description: 'One-shot public-web research: /tasks/v1/research. Accepted work can finish completed, partial, failed or cancelled.' },
+      { name: 'Agents', description: 'Scheduled monitoring services: /agents/v1. Currently free with an API key; not MCP tools.' },
+      { name: 'Account', description: 'Shared API-key credits.' },
+      { name: 'Discovery', description: 'Descriptions and challenges; these do not execute tools.' },
+    ],
+    'x-credits': { unitUsd: CREDIT_MICROS / 1e6, mcpTrialCredits: MCP_TRIAL_CREDITS, mcpTrialTools: ['web_scrape','web_map'], welcomeCredits: WELCOME_CREDITS, packages: CREDIT_PACKAGES.map(p => ({ usd: p.cents / 100, credits: p.credits })), billingUrl: SITE + '/dashboard/billing' },
+    components: { securitySchemes: { walletPayment: { type: "apiKey", in: "header", name: "PAYMENT-SIGNATURE", description: "x402 signed payment for starts and paid web operations; wallet ownership credentials for free job/session lifecycle calls. PAYMENT-REQUIRED is a quote and PAYMENT-RESPONSE is the settlement receipt. API-key users do not need this header." }, apiKey: {type:"http",scheme:"bearer",description:"Oassis API key. Shared account credits; 1 credit = $0.002."}, taskToken: { type: "apiKey", in:"header", name:"Task-Token", description: "Task-scoped access_token, not a customer API key. Status/cancel only." } } },
     /** Where a person goes. The rest of this document is for whatever is reading it. */
     externalDocs: { description: "oassis", url: SITE },
     paths,
@@ -267,75 +265,56 @@ export function openapi(c: Context<{ Bindings: Env }>): Record<string, unknown> 
       network,
       asset: USDC_BASE,
       ...(payTo ? { payTo } : {}),
-      note: "No account, no card, no signup: answer the 402 challenge and the call runs.",
+      note: "Independent wallet payment for paid Web Tools and Task starts; no account required. API-key credits are also supported. Scheduled Agents require an account key and currently do not debit credits. Discovery, status and cancellation are not new wallet payments.",
     },
   };
 }
 
 /** The same catalogue as plain text, for whoever reads with a model instead of a parser. */
 export function llmsTxt(c: Context<{ Bindings: Env }>): string {
-  const spec = openapi(c) as {
-    info: { title: string; description: string };
-    paths: Record<string, { post: { summary: string; description: string; "x-x402": { price: string }; "x-mcp-tool": string } }>;
-  };
+  const spec = openapi(c) as { info: { description: string }; paths: Record<string, Record<string, { summary?: string; description?: string; 'x-x402'?: { price?: string }; 'x-mcp-tool'?: string }>> };
   const base = origin(c);
-
-  const lines = [
-    "# oassis",
-    "",
-    `> ${spec.info.description}`,
-    "",
-    "## How to pay",
-    "",
-    "- **Wallet (no account):** POST any endpoint below. It answers `402` with the price of that",
-    "  exact call in the `PAYMENT-REQUIRED` header, in USDC on Base. Pay it and repeat the call.",
-    "- **MCP:** 100 trial credits for scrape/map. Use a Bearer API key for all paid tools and further use.",
-    "- **Account credits:** 1 credit = $0.002. Verified accounts receive 1,000 welcome credits once. Buy 2,500 / 10,000 / 25,000 credits for $5 / $20 / $50, once or monthly. HTTP accepts the same API key.",
-    "- Nothing is charged for work that did not happen: a failure refunds, and an unpaid",
-    "  challenge is a quote, not a charge.",
-    "",
-    "## Endpoints",
-    "",
-  ];
-
-  for (const [path, op] of Object.entries(spec.paths)) {
-    const post = (op as { post?: { description: string; "x-x402"?: { price: string }; "x-mcp-tool": string } }).post;
-    if (!post?.["x-x402"]) continue;
-    lines.push(`### POST ${path}`);
-    lines.push("");
-    lines.push(post.description);
-    lines.push("");
-    lines.push(`- Price: ${post["x-x402"].price}`);
-    lines.push(`- MCP tool: \`${post["x-mcp-tool"]}\``);
-    lines.push(`- What it expects: GET ${path} (free)`);
-    lines.push("");
+  const lines = ['# oassis', '', '> Web infrastructure for AI agents: Web Tools, Tasks and scheduled Agents.', '',
+    '## Access and credits', '', CREDIT_GUIDE, '',
+    '- **MCP:** 100 trial credits for scrape/map, once per trial identity. No account or key is needed for that trial. Other paid tools and further use require an API key and available credits.',
+    '- **HTTP with an API key:** send Authorization: Bearer oas_... and use the same account credits as MCP.',
+    '- **HTTP with x402:** paid Web Tools and Task starts accept USDC wallet payment without an account. An unpaid valid POST returns HTTP 402 and PAYMENT-REQUIRED. Pay and repeat the request; PAYMENT-RESPONSE carries the settlement receipt.',
+    '- **Refunds:** eligible unused work is returned to account credits. Settled x402 payments cannot be automatically refunded on-chain. Research over x402 buys a fixed execution budget; account-key Research reserves a maximum and charges actual cost.',
+    '- **Discovery and lifecycle:** reading documentation or a challenge, checking status and requesting cancellation do not create a new payment. Closing a browser session can settle outstanding browser time on the account.',
+    '- **Credit packages:** the billing dashboard shows checkout availability for one-time or monthly packages. Create and verify an account before generating a key.',
+    '', '## Route structure', '',
+    '- /web/v1: synchronous Web Tools, sessions and feedback.',
+    '- /tasks/v1/scrape/batch and /tasks/v1/crawl: asynchronous extraction jobs. Starts return jobId; poll the corresponding GET /{id}. POST /{id}/cancel stops pending work.',
+    '- /tasks/v1/research: one-shot research with sources. A 202 means accepted, not completed. Check status until completed, partial, failed or cancelled.',
+    '- /agents/v1: recurring monitoring services. Currently free with an account API key, up to 10 active services per account; daily or weekly. No MCP tools.',
+    '- Use only the definitive routes below. Older /v1, /agent/v1 and extraction under /web/v1 are not aliases.', ''];
+  const groups = [
+    ['Web Tools', (path: string) => path.startsWith('/web/v1') && path !== '/web/v1/account'],
+    ['Extraction Tasks', (path: string) => path.startsWith('/tasks/v1') && !path.startsWith('/tasks/v1/research')],
+    ['Research Tasks', (path: string) => path.startsWith('/tasks/v1/research')],
+    ['Scheduled Agents', (path: string) => path.startsWith('/agents/v1')],
+    ['Account', (path: string) => path === '/web/v1/account'],
+  ] as const;
+  for (const [title, includes] of groups) {
+    lines.push('## ' + title, '');
+    for (const [path, operations] of Object.entries(spec.paths)) {
+      if (!includes(path)) continue;
+      for (const [method, op] of Object.entries(operations)) {
+        lines.push('### ' + method.toUpperCase() + ' ' + path, '', op.description || op.summary || '', '');
+        if (op['x-x402']) lines.push('- Price: ' + (op['x-x402'].price || 'Execution budget quoted in PAYMENT-REQUIRED.'));
+        if (op['x-mcp-tool']) lines.push('- MCP tool: `' + op['x-mcp-tool'] + '`');
+        lines.push('');
+      }
+    }
   }
-
-  lines.push("## Research Tasks");
-  lines.push("");
-  lines.push(
-    "A research task answers a question from public pages, with sources, progress and cost. Tasks over MCP require an API key and sufficient credits. HTTP start uses x402 for a fixed execution budget; status/cancel use Task-Token and are free.",
-  );
-  lines.push("");
-  lines.push(`- POST ${base}/tasks/v1/research: start a task (202, with a Location header)`);
-  lines.push(`- GET ${base}/tasks/v1/research/{task_id}: read status, sources, result and billing`);
-  lines.push(`- POST ${base}/tasks/v1/research/{task_id}/cancel: stop a task (free with Task-Token; no automatic on-chain refund)`);
-  lines.push("- MCP tools: web_task_start, web_task_status, web_task_cancel");
-  lines.push("");
-
-  lines.push("## Scheduled Agents");
-  lines.push("GET /agents/v1 lists price-watch, web-watch and competitor-monitor. GET /agents/v1/{agent} describes parameters. POST /agents/v1/{agent} creates a service with an API key. GET /agents/v1/services lists your services; GET /agents/v1/services/{id} reads its report. POST /agents/v1/services/{id}/cancel cancels future runs and keeps the report. These services are currently free and have no MCP tools.");
-  lines.push("");
-  lines.push("## MCP");
-  lines.push("");
-  lines.push(`Streamable HTTP at \`${base}/mcp\`. MCP includes 100 trial credits for scrape and map. Other tools require an API key; verified accounts receive 1,000 welcome credits.`);
-  lines.push("");
-  lines.push("## Machine-readable");
-  lines.push("");
-  lines.push(`- Site, for a person: ${SITE}`);
-  lines.push(`- OpenAPI: ${base}/openapi.json`);
-  lines.push(`- This file: ${base}/llms.txt`);
-  lines.push("");
-
-  return lines.join("\n");
+  lines.push('## Ownership and retries', '',
+    '- Extraction jobs and browser sessions: use the owning account key or the wallet credentials used at creation. Status and cancellation do not buy a new execution.',
+    '- Research with an API key: Idempotency-Key is required for HTTP start (maximum 100 characters); use the owning key for status and cancellation.',
+    '- Research with x402: retain access_token from the start response and send it as Task-Token on status/cancel. For retries use the same Task-Token, Idempotency-Key and request. Do not send literal {id} or {task_id}: replace it with the returned identifier.',
+    '- Research may return a partial result when available evidence or execution limits prevent a complete answer. A successful start is not proof of completion.', '',
+    '## MCP', '',
+    'Stateless JSON-RPC on POST ' + base + '/mcp. Use initialize, tools/list, then tools/call. GET /mcp describes access and the tool catalog; it does not execute a tool.',
+    'Resources: oassis://llms.txt and oassis://openapi.json. Resource and prompt reads are discovery, not Web Tool executions.', '',
+    '## Links', '', '- Site: ' + SITE, '- Sign up: ' + SITE + '/signup', '- API keys and credits: ' + SITE + '/dashboard/billing', '- OpenAPI: ' + base + '/openapi.json', '- This file: ' + base + '/llms.txt', '');
+  return lines.join('\n');
 }

@@ -247,13 +247,6 @@ export const billing: MiddlewareHandler<{ Bindings: Env }> = async (c, next) => 
       const identity = wallet ? walletIdentity(wallet) : null;
       c.set("payer", { gate: "x402", wallet: wallet ?? undefined, chargedMicros: micros, identity });
 
-      // Recorded so a wallet caller has a history too, under the same account column.
-      if (identity) {
-        await recordWalletPayment(c.env.BILLING, identity, micros, new URL(c.req.url).pathname).catch(
-          () => undefined,
-        );
-      }
-
       c.header("x-oassis-price", inDollars(micros));
       await next();
     });
@@ -265,6 +258,7 @@ export const billing: MiddlewareHandler<{ Bindings: Env }> = async (c, next) => 
      * so the catch below never sees it, and a keyless caller got `Internal Server Error` on
      * the main endpoint of the API. That is our problem and it has an answer: use a key.
      */
+    if (answer) c.res = answer;
     const status = answer?.status ?? c.res?.status ?? 200;
     if (!verified && status >= 500) {
       console.error(`x402: the wallet gate answered ${status} before any payment: check the facilitator keys`);
@@ -277,6 +271,12 @@ export const billing: MiddlewareHandler<{ Bindings: Env }> = async (c, next) => 
         },
         402,
       );
+    }
+    const settled = answer ?? c.res;
+    const identity = c.get("payer")?.identity;
+    if (verified && identity && settled.status >= 200 && settled.status < 300) {
+      await recordWalletPayment(c.env.BILLING, identity, micros, new URL(c.req.url).pathname, settled.headers)
+        .catch(e => console.error("x402 payment log", e));
     }
     return answer;
   } catch (e) {

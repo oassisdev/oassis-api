@@ -77,3 +77,21 @@ it('publishes every definitive family and its cancellations without retired path
  for(const path of Object.keys(spec.paths))expect(path).not.toMatch(/^\/v1\/|^\/agent\/|^\/web\/v1\/(?:crawl|scrape\/batch)/);
  const catalog=await (await request('/')).json() as any;expect(catalog.endpoints).toContain('POST /agents/v1/services/:id/cancel');expect(catalog.endpoints).toContain('POST /tasks/v1/crawl/:id/cancel');
 });
+
+it('closes only an owned session with POST /close, with no DELETE alias or extra debit',async()=>{
+ const calls:unknown[]=[];
+ (env as any).SESSIONS={idFromString:(id:string)=>id,get:(id:string)=>({fetch:async(_url:string,options:RequestInit)=>{
+  calls.push(JSON.parse(String(options.body)));sql.prepare('UPDATE sessions SET closed_at=? WHERE id=?').run(Date.now(),id);return Response.json({sessionId:id,closed:true});
+ }})};
+ sql.prepare('INSERT INTO sessions(id,account,gate,opened_at) VALUES(?,?,?,?)').run('close-test','owner','key',Date.now());
+ for(const method of ['DELETE','POST'])expect((await request('/web/v1/session/close-test',method,undefined,key)).status).toBe(404);
+ expect((await request('/web/v1/session/close-test/close','DELETE',undefined,key)).status).toBe(404);
+ expect((await request('/web/v1/session/close-test/close','POST')).status).toBe(404);
+ expect((await request('/web/v1/session/close-test/close','POST',undefined,'oas_other')).status).toBe(404);
+ expect((await request('/web/v1/session/close-test/close','POST',undefined,'oas_wrong')).status).toBe(401);expect(calls).toEqual([]);
+ const r=await request('/web/v1/session/close-test/close','POST',undefined,key);expect(r.status).toBe(200);expect(await r.json()).toMatchObject({sessionId:'close-test',closed:true});expect(calls).toEqual([{kind:'close'}]);
+ expect(sql.prepare('SELECT COUNT(*) n FROM prepaid_debits').get().n).toBe(0);
+ expect((await request('/web/v1/session/close-test/close','POST',undefined,key)).status).toBe(404);
+ const spec=await (await request('/openapi.json')).json() as any;expect(spec.paths['/web/v1/session/{id}/close'].post.operationId).toBe('web_session_close');expect(spec.paths['/web/v1/session/{id}']).toBeUndefined();
+ const catalog=await (await request('/')).json() as any;expect(catalog.endpoints).toContain('POST /web/v1/session/:id/close');expect(catalog.endpoints).not.toContain('DELETE /web/v1/session/:id');
+});

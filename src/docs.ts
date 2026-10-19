@@ -79,7 +79,7 @@ export const sessionDoc = (c: Context<{ Bindings: Env }>) => ({
     [`POST ${prefix(c)}/session`]:
       'Opens a session and navigates. Same fields as /scrape; `formats` defaults to ["controls"]. Returns `sessionId`.',
     [`POST ${prefix(c)}/act`]: "Runs `actions` against a session and returns the outputs of the resulting state.",
-    [`DELETE ${prefix(c)}/session/:id`]: "Closes the session and stops billing.",
+    [`POST ${prefix(c)}/session/:id/close`]: "Closes the browser session, stops its time and settles any outstanding browser time. No additional close fee.",
   },
   actions: ACTIONS,
   prices: {
@@ -103,7 +103,7 @@ export const batchDoc = (_c: Context<{ Bindings: Env }>) => ({
     [`POST /tasks/v1/scrape/batch`]:
       "A batch of scrapes: queues one scrape per url you give it. Same fields as /scrape but with `urls` (2–50) and no `url`. Returns a `jobId`. It discovers nothing — for that, use /crawl.",
     [`GET /tasks/v1/scrape/batch/:id`]: "Collects the job: status, how many are done, and the results so far. `?limit=1..50`.",
-    [`POST /tasks/v1/scrape/batch/:id/cancel`]: "Cancels the job. The urls that never ran are refunded.",
+    [`POST /tasks/v1/scrape/batch/:id/cancel`]: "Cancels pending work and refunds URLs that never started. A page already being read may finish and is billed normally; failed reads are refunded.",
   },
   notes: [
     "Charged up front, one scrape per url. A url that fails outright and a url served from the cache are refunded together when the job ends, as a single movement in your account.",
@@ -145,7 +145,7 @@ export const crawlDoc = (_c: Context<{ Bindings: Env }>) => ({
     [`POST /tasks/v1/crawl`]:
       "Starts a crawl from `url`. Same fields as /scrape plus `limit` (pages, default 25, max 200), `maxDepth` (default 2) and the site filters. Returns a `jobId`.",
     [`GET /tasks/v1/crawl/:id`]: "Collects it: status, pages read, discovered, still queued, and the pages. `?limit=1..50`.",
-    [`POST /tasks/v1/crawl/:id/cancel`]: "Cancels it. The pages never read are refunded.",
+    [`POST /tasks/v1/crawl/:id/cancel`]: "Cancels pending work and refunds pages that never started. A page already being read may finish and is billed normally; failed reads are refunded.",
   },
   notes: [
     "Charged up front for the pages it is allowed to read. A crawl that finds twelve pages when it was allowed thirty refunds the eighteen it never touched, in one movement.",

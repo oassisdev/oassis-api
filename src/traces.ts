@@ -12,6 +12,7 @@
 
 import type { Context, Hono, MiddlewareHandler } from "hono";
 import type { Env } from "./types";
+import { requestAccount } from "./billing/accounts";
 
 /** Complete rolling retention window; no row cap may discard younger calls. */
 export const TRACE_DAYS = 30;
@@ -80,14 +81,17 @@ export async function recordTrace(env: Env, t: Trace): Promise<void> {
   }
 }
 
-/** Delete only calls older than the retention window. */
+/** Keep the rolling window and the whole current UTC month, including day 1 in 31-day months. */
 export async function pruneTraces(env: Env): Promise<void> {
   const db = env.BILLING;
   if (!db) return;
   try {
+    const now = Date.now();
+    const month = new Date(now);
+    const cutoff = Math.min(now - TRACE_DAYS * 86_400_000, Date.UTC(month.getUTCFullYear(), month.getUTCMonth(), 1));
     await db
       .prepare(`DELETE FROM traces WHERE at < ?1`)
-      .bind(Date.now() - TRACE_DAYS * 86_400_000)
+      .bind(cutoff)
       .run();
   } catch {
     /* pruning is maintenance: it can wait for the next write */
@@ -170,7 +174,16 @@ export function traceLog(): MiddlewareHandler<{ Bindings: Env }> {
     };
 
     // After the answer has gone out: the caller never waits for our bookkeeping.
-    c.executionCtx.waitUntil(recordTrace(c.env, trace));
+    c.executionCtx.waitUntil((async () => {
+      // Free lifecycle calls and validation errors can bypass the billing payer.
+      if (!trace.account && (c.req.header("authorization") || c.req.header("x-api-key"))) {
+        try {
+          const account = await requestAccount(c.env.BILLING, c.req.raw.headers);
+          if (account && account !== "invalid") trace.account = account.id;
+        } catch { /* logging must never affect the response */ }
+      }
+      await recordTrace(c.env, trace);
+    })());
   };
 }
 

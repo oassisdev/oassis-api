@@ -12,8 +12,9 @@
  */
 
 import { DurableObject } from "cloudflare:workers";
-import { credit } from "../billing/accounts";
-import { PRICES, crawlPagePrice, inDollars } from "../billing/prices";
+import { refundJob } from "./refund";
+import { JobUpdates } from "./serial";
+import { PRICES, crawlPagePrice, inDollars, scrapePrice } from "../billing/prices";
 import { CachedRenderer } from "../cached-renderer";
 import { cacheable } from "../cache";
 import { keepUrl } from "../map";
@@ -38,6 +39,8 @@ interface Stored {
   chargedMicros: number;
   createdAt: number;
   finishedAt?: number;
+  /** A claimed page is billed even if cancellation arrives while it is being read. */
+  inFlight?: boolean;
   state: CrawlState;
   frontier: Frontier[];
   /** Pages already read, which is what decides when the limit is spent. */
@@ -68,7 +71,13 @@ export type CrawlMessage =
   | { kind: "cancel" };
 
 export class CrawlJob extends DurableObject<Env> {
-  async fetch(request: Request): Promise<Response> {
+  private readonly updates = new JobUpdates();
+
+  fetch(request: Request): Promise<Response> {
+    return this.updates.run(() => this.handle(request));
+  }
+
+  private async handle(request: Request): Promise<Response> {
     const message = (await request.json()) as CrawlMessage;
     const jobId = this.ctx.id.toString();
 
@@ -106,9 +115,10 @@ export class CrawlJob extends DurableObject<Env> {
         job.finishedAt = Date.now();
         await this.ctx.storage.deleteAlarm();
         job.refundMicros += this.unreadMicros(job);
+        job.frontier = [];
         await this.ctx.storage.put("job", job);
-        await this.refund(job);
       }
+      if (job.refundMicros > 0) await this.refund(job);
       return Response.json(await this.status(jobId, job, 50));
     }
 
@@ -117,7 +127,7 @@ export class CrawlJob extends DurableObject<Env> {
 
   /** Pages paid for and never read. */
   private unreadMicros(job: Stored): number {
-    return Math.max(0, job.req.limit - job.read) * crawlPagePrice(job.req.formats);
+    return Math.max(0, job.req.limit - job.read - (job.inFlight ? 1 : 0)) * crawlPagePrice(job.req.formats);
   }
 
   /**
@@ -150,79 +160,87 @@ export class CrawlJob extends DurableObject<Env> {
   }
 
   async alarm(): Promise<void> {
-    const job = await this.ctx.storage.get<Stored>("job");
-    if (!job || job.state === "cancelled" || job.state === "done") return;
-
-    job.state = "running";
-    const provider = new QuickActionsRenderer(this.env.BROWSER);
-    // The links are always read: without them a crawl has nowhere to go next. They
-    // are part of the page price, and they are returned to the caller too.
-    const formats = [...new Set<Format>([...job.req.formats, "links"])];
-
-    for (let i = 0; i < CHUNK && job.frontier.length > 0 && job.read < job.req.limit; i += 1) {
-      const next = job.frontier.shift() as Frontier;
-      const req = { ...job.req, url: next.url, formats } as unknown as Parameters<typeof read>[0];
-      const renderer = cacheable(req) ? new CachedRenderer(this.env, provider, req.maxAge ?? 0) : provider;
-
-      try {
-        const res = await read(req, renderer, this.env);
-        const cached = res.metadata.cached ?? [];
-        if (cached.length) {
-          job.refundMicros += cached.length * (crawlPagePrice(job.req.formats) / formats.length - PRICES.cacheHit);
-        }
-        if (!res.success) job.refundMicros += crawlPagePrice(job.req.formats);
-
-        await this.addPage({
-          url: next.url,
-          depth: next.depth,
-          ok: res.success,
-          data: res.data,
-          errors: res.errors,
-          ...(cached.length ? { cached } : {}),
-        });
-
-        // Where to go next: the links of this page, one level deeper.
-        if (next.depth < job.req.maxDepth && Array.isArray(res.data.links)) {
-          const known = new Set(job.seen);
-
-          for (const candidate of res.data.links as unknown[]) {
-            if (typeof candidate !== "string") continue;
-            const kept = keepUrl(candidate, { ...job.req, url: job.req.url } as never);
-            if (!kept || known.has(kept)) continue;
-            // Never queue more than the limit could ever read: a frontier of ten
-            // thousand urls is storage we pay for and never use.
-            if (job.frontier.length + job.read >= job.req.limit * 2) break;
-            job.frontier.push({ url: kept, depth: next.depth + 1 });
-            known.add(kept);
-            job.seen.push(kept);
-            job.discovered += 1;
-          }
-        }
-      } catch (e) {
-        await this.addPage({
-          url: next.url,
-          depth: next.depth,
-          ok: false,
-          errors: { markdown: e instanceof Error ? e.message : String(e) } as ScrapeResponse["errors"],
-        });
-        job.refundMicros += crawlPagePrice(job.req.formats);
-      }
-
-      job.read += 1;
-      await this.ctx.storage.put("job", job);
-    }
-
-    if (job.frontier.length === 0 || job.read >= job.req.limit) {
-      job.state = "done";
-      job.finishedAt = Date.now();
-      // A crawl that ran out of links before running out of budget did not use what
-      // it was charged for.
-      job.refundMicros += this.unreadMicros(job);
-      await this.ctx.storage.put("job", job);
-      await this.refund(job);
+    const initial = await this.ctx.storage.get<Stored>("job");
+    if (!initial) return;
+    if (initial.state === "cancelled" || initial.state === "done") {
+      await this.updates.run(async () => {
+        const current = await this.ctx.storage.get<Stored>("job");
+        if (current) await this.refund(current);
+      });
       return;
     }
-    await this.ctx.storage.setAlarm(Date.now() + 100);
+    const provider = new QuickActionsRenderer(this.env.BROWSER);
+    const formats = [...new Set<Format>([...initial.req.formats, "links"])];
+    for (let i = 0; i < CHUNK; i += 1) {
+      const claimed = await this.updates.run(async () => {
+        const job = await this.ctx.storage.get<Stored>("job");
+        if (!job || job.state === "cancelled" || job.state === "done") return null;
+        job.state = "running";
+        job.inFlight = true;
+        await this.ctx.storage.put("job", job);
+        return job;
+      });
+      if (!claimed) return;
+      const job = claimed;
+      const next = job.frontier[0]!;
+      const req = { ...job.req, url: next.url, formats } as unknown as Parameters<typeof read>[0];
+      const renderer = cacheable(req) ? new CachedRenderer(this.env, provider, req.maxAge ?? 0) : provider;
+      let res: ScrapeResponse | undefined;
+      let error = "Page read failed";
+      try { res = await read(req, renderer, this.env); }
+      catch (e) { error = e instanceof Error ? e.message : String(e); }
+
+      const terminal = await this.updates.run(async () => {
+        // Cancellation may have happened during the browser request. Never write its stale snapshot.
+        const job = (await this.ctx.storage.get<Stored>("job"))!;
+        job.frontier.shift();
+        if (res) {
+          const cached = res.metadata.cached ?? [];
+          if (!res.success) job.refundMicros += crawlPagePrice(job.req.formats);
+          else job.refundMicros += cached.reduce((sum, f) => sum + scrapePrice([f]) - PRICES.cacheHit, 0);
+          await this.addPage({ url: next.url, depth: next.depth, ok: res.success,
+            data: res.data, errors: res.errors, ...(cached.length ? { cached } : {}) });
+          // Where to go next: the links of this page, one level deeper.
+          if (job.state !== "cancelled" && next.depth < job.req.maxDepth && Array.isArray(res.data.links)) {
+            const known = new Set(job.seen);
+
+            for (const candidate of res.data.links as unknown[]) {
+              if (typeof candidate !== "string") continue;
+              const kept = keepUrl(candidate, { ...job.req, url: job.req.url } as never);
+              if (!kept || known.has(kept)) continue;
+              // Never queue more than the limit could ever read: a frontier of ten
+              // thousand urls is storage we pay for and never use.
+              if (job.frontier.length + job.read >= job.req.limit * 2) break;
+              job.frontier.push({ url: kept, depth: next.depth + 1 });
+              known.add(kept);
+              job.seen.push(kept);
+              job.discovered += 1;
+            }
+          }
+        } else {
+          await this.addPage({ url: next.url, depth: next.depth, ok: false, errors: { markdown: error } as ScrapeResponse["errors"] });
+          job.refundMicros += crawlPagePrice(job.req.formats);
+        }
+        job.read += 1;
+        job.inFlight = false;
+        if (job.state !== "cancelled" && (job.frontier.length === 0 || job.read >= job.req.limit)) {
+          job.state = "done";
+          job.finishedAt = Date.now();
+          job.refundMicros += this.unreadMicros(job);
+        }
+        await this.ctx.storage.put("job", job);
+        if (job.state === "cancelled" || job.state === "done") {
+          await this.refund(job);
+          return true;
+        }
+        return false;
+      });
+      if (terminal) return;
+    }
+    await this.updates.run(async () => {
+      const job = await this.ctx.storage.get<Stored>("job");
+      if (job && job.state !== "cancelled" && job.state !== "done") await this.ctx.storage.setAlarm(Date.now() + 100);
+    });
   }
 
   /** Appends a page to the assembled list, which is the only place pages are stored. */
@@ -239,9 +257,10 @@ export class CrawlJob extends DurableObject<Env> {
     if (amount <= 0) return;
     const why = job.state === "cancelled" ? "cancelled" : "pages not read, failures and cache hits";
     try {
-      await credit(this.env.BILLING, job.account, amount, `refund: crawl (${why})`, this.ctx.id.toString());
+      await refundJob(this.env.BILLING, job.account, this.ctx.id.toString(), job.refundedMicros, amount, `refund: crawl (${why})`);
     } catch (e) {
       console.error(`crawl refund failed: ${e}`);
+      await this.ctx.storage.setAlarm(Date.now() + 1000);
       return;
     }
     job.refundMicros = 0;

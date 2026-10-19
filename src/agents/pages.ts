@@ -76,9 +76,9 @@ pre{background:var(--card);border:1px solid var(--line);border-radius:8px;paddin
 .cta{display:inline-block;background:var(--accent);color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none;font-weight:600;margin-top:8px}
 @media (max-width:600px){main{padding:16px}h1{font-size:26px}}
 </style></head><body>
-<header><a href="/"><strong>oassis</strong></a><nav aria-label="Main"><a href="/#tools">Web Tools</a><a href="/task-api">Tasks</a><a href="/agents">Agents</a><a href="/docs">Docs</a><a href="/login">Log In</a></nav></header>
+<header><a href="/"><strong>oassis</strong></a><nav aria-label="Main"><a href="/task-api">Tasks</a><a href="/agents">Agents</a><a href="/docs">Docs</a><a href="/login">Log In</a></nav></header>
 <main>${body}</main>
-<footer><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/support">Support</a><a href="${API}/openapi.json">API reference</a></footer>
+<footer><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="${API}/openapi.json">API reference</a></footer>
 </body></html>`;
 }
 

@@ -53,10 +53,10 @@ import { landing, robotsTxt, sitemapXml, servedText } from "./landing";
 import { mountIcon } from "./icon";
 import { mountSitePayments, prepaidIdentity } from "./site-payments";
 import { creditNotices } from "./billing/notices";
-import { mountSiteAuth } from "./site-auth";
+import { createSiteAuth, mountSiteAuth } from "./site-auth";
 import { mountSitePages } from "./site-pages";
 import { mountTraceLog } from "./traces";
-import { privacyPage, supportPage, termsPage } from "./legal";
+import { notFoundPage, privacyPage, termsPage } from "./legal";
 import { actDoc, batchDoc, crawlDoc, doc, mapDoc, searchDoc, sessionDoc } from "./docs";
 import { llmsTxt, openapi } from "./openapi";
 import { mountBackoffice } from "./private/backoffice";
@@ -119,9 +119,9 @@ mountAgentPages(app);
  * so it answers a page; the API hosts answer the index a client is looking for. Serving the
  * page everywhere would put html in front of an agent that asked for a service description.
  */
-app.get("/", (c) => {
+app.get("/", async (c) => {
   if (isSite(c)) {
-    return c.html(landing(c), 200, { "cache-control": "public, max-age=3600" });
+    return c.html(landing(c, await siteAccount(c)), 200, { "cache-control": "private, no-store" });
   }
   return cacheableDoc(c, {
     service: "oassis-api",
@@ -132,7 +132,7 @@ app.get("/", (c) => {
       'POST /web/v1/search',
       'POST /web/v1/session',
       'POST /web/v1/act',
-      'DELETE /web/v1/session/:id',
+      'POST /web/v1/session/:id/close',
       'POST /web/v1/feedback',
       'GET /web/v1/account',
       'POST /tasks/v1/scrape/batch',
@@ -334,7 +334,7 @@ app.on("POST", productPath("act"), async (c) => {
   return refundUnrunActions(c, actions.length, res);
 });
 
-app.on("DELETE", productPath("session/:id"), async (c) => {
+app.post(productPath("session/:id/close"), async (c) => {
   /**
    * Closing is free, so the billing guard never runs here and the caller has to be resolved
    * by hand: otherwise anybody holding an id could kill a stranger's session mid-work. A key
@@ -383,6 +383,7 @@ app.on("POST", productPath("scrape/batch"), async (c) => {
     payer?.gate ?? "x402",
     parsed.data.urls.length,
     payer?.chargedMicros ?? 0,
+    "batch",
   );
   return callJob(c, id, {
     kind: "create",
@@ -540,6 +541,7 @@ app.on("POST", productPath("crawl"), async (c) => {
     payer?.gate ?? "x402",
     parsed.data.limit,
     payer?.chargedMicros ?? 0,
+    "crawl",
   );
   return callCrawl(c, id, {
     kind: "create",
@@ -629,6 +631,17 @@ app.on("POST", productPath("search"), async (c) => {
   }
 });
 
+/** The website account this browser is signed in to, if any. Read only on the site, where the home depends on it. */
+async function siteAccount(c: Context<{ Bindings: Env }>): Promise<{ email: string } | null> {
+  if (!c.env.AUTH_SECRET) return null;
+  try {
+    const session = await createSiteAuth(c.env).api.getSession({ headers: c.req.raw.headers });
+    return session ? { email: session.user.email } : null;
+  } catch {
+    return null;
+  }
+}
+
 /** The bare domain, and www: where a person lands rather than a client. */
 const isSite = (c: Context<{ Bindings: Env }>) => {
   const host = new URL(c.req.url).hostname;
@@ -645,7 +658,6 @@ const htmlPage = (body: string) =>
     headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=3600" },
   });
 app.get("/privacy", (c) => htmlPage(privacyPage(c)));
-app.get("/support", (c) => htmlPage(supportPage(c)));
 app.get("/terms", (c) => htmlPage(termsPage(c)));
 
 app.get("/robots.txt", (c) =>
@@ -669,7 +681,7 @@ app.get("/.well-known/mcp/server.json", (c) =>
   c.json(serverManifest, 200, { "cache-control": "public, max-age=3600" }),
 );
 app.get("/llms.txt", (c) =>
-  c.text(llmsTxt(c), 200, { "cache-control": "public, max-age=3600", "content-type": "text/plain; charset=utf-8" }),
+  c.text(llmsTxt(c), 200, { "cache-control": "public, max-age=0, must-revalidate", "content-type": "text/plain; charset=utf-8" }),
 );
 
 /**
@@ -679,7 +691,9 @@ app.get("/llms.txt", (c) =>
 mountBackoffice(app);
 
 app.notFound((c) =>
-  c.json({ success: false, error: "not_found", endpoints: ["POST /web/v1/scrape"] }, 404),
+  isSite(c)
+    ? c.html(notFoundPage(c), 404, { "cache-control": "no-store" })
+    : c.json({ success: false, error: "not_found", endpoints: ["POST /web/v1/scrape"] }, 404),
 );
 
 app.onError((e, c) => {

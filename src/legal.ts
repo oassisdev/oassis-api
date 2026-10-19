@@ -38,7 +38,6 @@ ${body}
 <footer>
   oassis · <a href="${base}/privacy">Privacy</a> ·
   <a href="${base}/terms">Terms</a> ·
-  <a href="${base}/support">Support</a> ·
   <a href="${base}/llms.txt">llms.txt</a>
 </footer>
 </div>
@@ -86,11 +85,11 @@ changes when the system does.</p>
 <tr><td>Rendered pages, cached</td><td>So a repeat read is cheaper for you</td><td>Short-lived, then discarded</td></tr>
 <tr><td>A short request log: time, route, status, how long it took, your IP, your
 user-agent, and a truncated copy of the request and the answer</td><td>So a call can be
-explained when something goes wrong</td><td>${TRACE_DAYS} days</td></tr>
+explained when something goes wrong</td><td>${TRACE_DAYS} days, or until the current UTC calendar month ends if longer (up to 31 days)</td></tr>
 </tbody>
 </table>
 
-<h3>Website cookies and social sign-in</h3>
+<h3 id="cookies">Website cookies and social sign-in</h3>
 <p>Signing in sets essential, Secure, HttpOnly session cookies for oassis.dev. They are not advertising cookies. Your browser may store your last successful sign-in method to display “Last used”. If you choose an enabled Google or GitHub sign-in, that provider authenticates you and shares your profile and email with Oassis under its own privacy policy. Social sign-in may not be available until configured.</p>
 <h3>Calls with no key and your IP address</h3>
 
@@ -99,7 +98,7 @@ explained when something goes wrong</td><td>${TRACE_DAYS} days</td></tr>
 <h3>About the request log</h3>
 
 <p>We keep a short operational log of recent requests so that a call can be explained when
-something goes wrong. It is retained for ${TRACE_DAYS} days without a row-count limit; older entries are
+something goes wrong. It is retained for ${TRACE_DAYS} days without a row-count limit. The current UTC calendar month is also kept complete, for up to 31 days; older entries are
 removed during maintenance. The bodies are stored truncated — enough to see what was
 asked for, not a copy of the answer. Large responses are recorded as a size and never read.
 It is read by us, to run the service, and by nobody else.</p>
@@ -252,45 +251,56 @@ reduces what you get applies from when it is published, not retroactively.</p>
   );
 }
 
-export function supportPage(c: Context<{ Bindings: Env }>): string {
+/**
+ * A robot agent with a magnifying glass, looking at a web with one thread missing. Drawn
+ * in the page's own colours, so it reads in light and dark.
+ */
+const LOST_ROBOT = `<svg viewBox="0 0 320 230" role="img" aria-label="A confused robot agent holds a magnifying glass up to a web that is missing one thread, while a spider dangles above it">
+<g fill="none" stroke="currentColor" stroke-width="1.5" opacity=".3">
+<circle cx="240" cy="120" r="40"/><circle cx="240" cy="120" r="70"/>
+<path d="M240 120 L340 120 M240 120 L311 191 M240 120 L240 220 M240 120 L169 191 M240 120 L140 120 M240 120 L240 20 M240 120 L311 49"/>
+</g>
+<path d="M240 120 L169 49" fill="none" stroke="#b57912" stroke-width="2" stroke-dasharray="5 6"/>
+<text x="176" y="34" font-size="22" font-weight="700" fill="#b57912" font-family="ui-monospace, Menlo, monospace">?</text>
+<g fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+<path d="M75 72 V58"/>
+<rect x="48" y="72" width="54" height="44" rx="10" style="fill:var(--bg)"/>
+<rect x="40" y="120" width="70" height="66" rx="12" style="fill:var(--bg)"/>
+<path d="M40 138 L26 160 M110 138 L124 120 M58 186 V206 M92 186 V206"/>
+<path d="M62 106 q6 -5 12 0 t12 0" stroke-width="2"/>
+<circle cx="146" cy="96" r="18" stroke-width="3"/>
+<path d="M133 109 L122 120" stroke-width="4"/>
+</g>
+<circle cx="75" cy="54" r="4" fill="#b57912"/>
+<circle cx="63" cy="92" r="6" fill="currentColor"/>
+<circle cx="87" cy="88" r="6" fill="currentColor"/>
+<path d="M276 0 V30" stroke="currentColor" stroke-width="1.5"/>
+<ellipse cx="276" cy="40" rx="7" ry="9" fill="currentColor"/>
+<path d="M269 36 l-8 -4 M269 44 l-8 4 M283 36 l8 -4 M283 44 l8 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+</svg>`;
+
+/** An address that is not a page here. A person gets a way back; the API hosts keep their JSON. */
+export function notFoundPage(c: Context<{ Bindings: Env }>): string {
   const base = origin(c);
-  return page(
-    c,
-    "Support",
-    "How to get help with the oassis web scraping and crawling API: where to write, what to include, and how refunds work when a call fails.",
-    `
-<h1>Support</h1>
-
-<p>Write to <a href="mailto:${SUPPORT_EMAIL}">${SUPPORT_EMAIL}</a>. A person reads it, and
-there is no ticket form to fill in first.</p>
-
-<h2>Before you write, this may answer it</h2>
-
-<ul>
-  <li><strong>Every route explains itself.</strong> <code>GET ${base}/web/v1/scrape</code>
-  returns the fields it expects and the price, free of charge. Same for every other route.</li>
-  <li><strong>A failed call is not charged.</strong> If the work does not happen, the money
-  is not taken — and if it was taken, it is returned. You do not need to ask.</li>
-  <li><strong>The catalogue:</strong> <a href="${base}/openapi.json">OpenAPI</a> and
-  <a href="${base}/llms.txt">llms.txt</a>.</li>
-</ul>
-
-<h2>What to include</h2>
-
-<p>The route you called, the url you asked for, roughly when, and what you expected instead.
-If you have an account, its id — never your API key, which we never need and cannot read
-anyway.</p>
-
-<h2>Reporting something that looks like a security problem</h2>
-
-<p>Write to the same address with "security" in the subject, and please give us a chance to
-fix it before telling anyone else. We answer these first.</p>
-
-<h2>Billing</h2>
-
-<p>Prices are quoted before any work happens and charged after it. A balance does not expire
-and there is no monthly fee. If a charge looks wrong, write with the time and the route and
-we will look it up and refund it if it is ours.</p>
-`,
-  );
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Page not found — oassis</title>
+<meta name="description" content="There is no page at this address on oassis.dev.">
+${ICON_LINKS}
+${STYLE}
+<style>.lost svg { display:block; width:100%; max-width:320px; height:auto; margin:8px 0 24px; color:var(--fg) }</style>
+</head>
+<body>
+<div class="wrap">
+<p class="nav"><a href="${base}/">← oassis</a></p>
+<h1>Page not found</h1>
+<figure class="lost">${LOST_ROBOT}</figure>
+<p>Our agent checked every link, and this address was not one of them. Start from the <a href="${base}/">home page</a>, or read the <a href="${base}/docs">documentation</a>.</p>
+</div>
+</body>
+</html>`;
 }

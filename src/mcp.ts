@@ -47,7 +47,7 @@ import { checkFreeCall } from "./free-tier";
 import { PROMPTS, RESOURCES, freeLine, readResource } from "./mcp-resources";
 import { VERSION } from "./version";
 import { feedbackRequest, storeFeedback } from "./feedback";
-import { CREDIT_GUIDE, creditsFor } from "./billing/credits";
+import { CREDIT_GUIDE, CREDIT_MICROS, MCP_TRIAL_CREDITS, WELCOME_CREDITS, CREDIT_PACKAGES, creditsFor } from "./billing/credits";
 import { trialIdentity, takeTrial, refundTrial } from "./billing/trial";
 import { startTask, getTask, cancelTask } from "./agent/service";
 import { publicTask } from "./agent/public-access";
@@ -127,7 +127,7 @@ const TOOLS = [
       openWorldHint: true,
     },
     description:
-      "Opens a browser on a page and leaves it open, returning the map of controls. Use it when something has to be FILLED IN or CLICKED, not just read: inside the session the `controls` references keep working and you can act on the same state. $0.005 plus the outputs. Close it with web_session_close when you are done. Reference for the oassis API: https://oassis.dev/openapi.json",
+      `Opens a browser session and returns the map of controls. Opening costs ${creditsFor(PRICES.sessionOpen)} credits plus the requested outputs; the first minute is included. Further started minutes cost ${creditsFor(PRICES.sessionMinute)} credits with an account key. Use web_act to interact and web_session_close when done. API key and credits required. Reference: https://oassis.dev/openapi.json`,
     inputSchema: fichaDe(sessionRequest, { omit: ["html"], required: ["url"] }),
   },
   {
@@ -140,7 +140,7 @@ const TOOLS = [
       openWorldHint: true,
     },
     description:
-      "Runs actions against an open session and returns the resulting state. Actions: {navigate}, {click:{ref}}, {type:{ref,text,clear}}, {select:{ref,value}}, {press}, {scroll}, {wait}, {back}. The `ref` is the one `controls` gave you. It stops at the first failure and tells you where. $0.0005 per action. Reference for the oassis API: https://oassis.dev/openapi.json",
+      "Runs actions against an open session and returns the resulting state. Actions: {navigate}, {click:{ref}}, {type:{ref,text,clear}}, {select:{ref,value}}, {press}, {scroll}, {wait}, {back}. The `ref` is the one `controls` gave you. It stops at the first failure and tells you where. $0.0005 (0.25 credit) per action, plus requested outputs and any outstanding browser time. API key and credits required. Reference for the oassis API: https://oassis.dev/openapi.json",
     inputSchema: fichaDe(actRequest, { extra: DE_SESION, omit: ["html"] }),
   },
   {
@@ -172,7 +172,7 @@ const TOOLS = [
       properties: {
         jobId: { type: "string", description: "The batch, from web_scrape_batch." },
         limit: { type: "number", description: "Results to return (default 50)." },
-        cancel: { type: "boolean", description: "Stop the batch and refund what it did not read." },
+        cancel: { type: "boolean", description: "Stop pending pages and refund pages that never started. An in-flight read may finish and is billed; failed reads are refunded." },
       },
       required: ["jobId"],
     },
@@ -219,7 +219,7 @@ const TOOLS = [
       properties: {
         jobId: { type: "string", description: "The crawl, from web_crawl." },
         limit: { type: "number", description: "Pages to return (default 50)." },
-        cancel: { type: "boolean", description: "Stop the crawl and refund what it did not read." },
+        cancel: { type: "boolean", description: "Stop pending pages and refund pages that never started. An in-flight read may finish and is billed; failed reads are refunded." },
       },
       required: ["jobId"],
     },
@@ -234,7 +234,7 @@ const TOOLS = [
       openWorldHint: true,
     },
     description:
-      "Search the web with Exa's index: a query instead of a url, for when you do not know where to look. Returns title, url and a snippet per result. To read the pages, pass the urls to web_scrape_batch. The engine is named because the price is Exa's, passed through with no markup and read from its own payment challenge on every call — today $0.007 per search.",
+      "Search the web with Exa's index: a query instead of a url, for when you do not know where to look. Returns title, url and a snippet per result. To read the pages, pass the urls to web_scrape_batch. The engine is named because the price is Exa's, passed through with no markup and read from its own payment challenge on every call — the quote is read at execution time and is not a guaranteed fixed price. API key and credits required over MCP.",
     inputSchema: fichaDe(searchRequest),
   },
   {
@@ -253,7 +253,7 @@ const TOOLS = [
   {
     name: "web_task_start",
     annotations: {
-      title: "Start an agent task",
+      title: "Start a research task",
       readOnlyHint: false,
       destructiveHint: false,
       idempotentHint: false,
@@ -266,7 +266,7 @@ const TOOLS = [
   {
     name: "web_task_status",
     annotations: {
-      title: "Check an agent task",
+      title: "Check a research task",
       readOnlyHint: true,
       destructiveHint: false,
       idempotentHint: true,
@@ -282,7 +282,7 @@ const TOOLS = [
   {
     name: "web_task_cancel",
     annotations: {
-      title: "Cancel an agent task",
+      title: "Cancel a research task",
       readOnlyHint: false,
       destructiveHint: false,
       idempotentHint: true,
@@ -306,7 +306,7 @@ const TOOLS = [
       openWorldHint: false,
     },
     description:
-      "Closes a session and stops billing browser time. Free. If you do not close it, it closes itself after a minute without use.",
+      "Closes the browser session and stops its time. HTTP equivalent: POST /web/v1/session/{id}/close. No additional close fee; outstanding browser time is settled when applicable. If you do not close it, it closes itself after a minute without use.",
     inputSchema: {
       type: "object",
       properties: { sessionId: { type: "string", description: "The session to close, from web_session_open." } },
@@ -364,7 +364,8 @@ mcp.post("/mcp", async (c) => {
           instructions: [
             "Web extraction and browser control for agents.",
             "MCP includes a one-time 100-credit trial for scrape and map. An API key unlocks all tools using your shared balance. Verified accounts receive 1,000 welcome credits.",
-            "HTTP operations use x402 (USDC), with no account or API key.",
+            CREDIT_GUIDE,
+            "HTTP supports the same Bearer API key and account credits, or independent x402 wallet payment. Web Tools use /web/v1; extraction and research Tasks use /tasks/v1; scheduled Agents use /agents/v1 and currently have no MCP tools.",
             "To read a page use web_scrape; to fill in or click something, open a session with web_session_open and act with web_act; to find urls use web_map before paying to read them.",
           ].join(" "),
         },
@@ -438,7 +439,7 @@ mcp.post("/mcp", async (c) => {
 });
 
 // A GET on /mcp is not a client mistake: it is someone looking with a browser. It never
-// changes between deploys, so it is cacheable like the other documents.
+// executes a tool; this document is revalidated between deployments.
 mcp.get("/mcp", (c) =>
   c.json(
     {
@@ -456,9 +457,24 @@ mcp.get("/mcp", (c) =>
         limits: "100 credits per trial identity; scrape and map only",
       },
       tools: TOOLS.map((t) => t.name),
+      credits: { unit_usd: CREDIT_MICROS / 1e6, trial: MCP_TRIAL_CREDITS, trial_tools: ['web_scrape','web_map'], welcome: WELCOME_CREDITS, packages: CREDIT_PACKAGES.map(p => ({ usd: p.cents / 100, credits: p.credits })), account_url: 'https://oassis.dev/signup', api_keys_url: 'https://oassis.dev/dashboard/billing' },
+      access: {
+        mcp: 'Authorization: Bearer oas_... uses shared account credits. Without a key, only the one-time scrape/map trial and free discovery or permitted lifecycle operations are available.',
+        http: 'The same API key and credits, or x402 wallet payment for paid Web Tools and Task starts. A 402 is a quote, not an execution or a payment.',
+        free: 'Feedback, resource/prompt discovery, and owner-authorized status/cancel do not consume tool credits. Browser close can settle outstanding browser time.',
+        refunds: 'Eligible refunds return to account credits; settled x402 payments have no automatic on-chain refund.',
+      },
+      families: [
+        { name: 'Web Tools', http_prefix: '/web/v1', tools: TOOLS.filter(t => !['web_scrape_batch','web_batch_status','web_crawl','web_crawl_status','web_task_start','web_task_status','web_task_cancel'].includes(t.name)).map(t => t.name) },
+        { name: 'Extraction Tasks', http_prefix: '/tasks/v1', tools: ['web_scrape_batch','web_batch_status','web_crawl','web_crawl_status'], lifecycle: 'Starts return jobId; status tools accept cancel:true. Acceptance is not completion.' },
+        { name: 'Research Tasks', http_prefix: '/tasks/v1/research', tools: ['web_task_start','web_task_status','web_task_cancel'], lifecycle: 'An API key reserves the maximum budget; actual work is charged and unused credits released. Poll until a terminal status, including partial.' },
+        { name: 'Scheduled Agents', http_prefix: '/agents/v1', tools: [], agents: ['price-watch','web-watch','competitor-monitor'], access: 'Currently free with an account API key, up to 10 active services per account. HTTP only; daily or weekly schedule.' },
+      ],
+      toolCatalog: TOOLS,
+      documentation: { llms: origin(c) + '/llms.txt', openapi: origin(c) + '/openapi.json', resources: RESOURCES.map(r => r.uri) },
     },
     200,
-    { "cache-control": "public, max-age=3600" },
+    { "cache-control": "public, max-age=0, must-revalidate" },
   ),
 );
 
@@ -493,7 +509,7 @@ async function callTool(
       body: JSON.stringify(
         args.cancel === true
           ? { kind: "cancel" }
-          : { kind: "status", limit: Math.min(50, Number(args.limit ?? 50) || 50) },
+          : { kind: "status", limit: Math.min(50, Math.max(1, Number(args.limit ?? 50) || 50)) },
       ),
       headers: { "content-type": "application/json" },
     });
@@ -518,7 +534,7 @@ async function callTool(
       body: JSON.stringify(
         args.cancel === true
           ? { kind: "cancel" }
-          : { kind: "status", limit: Math.min(50, Number(args.limit ?? 50) || 50) },
+          : { kind: "status", limit: Math.min(50, Math.max(1, Number(args.limit ?? 50) || 50)) },
       ),
       headers: { "content-type": "application/json" },
     });
@@ -695,7 +711,7 @@ async function callTool(
       const parsed = batchRequest.safeParse(args);
       if (!parsed.success) return rechazar(parsed.error.issues);
       const jobId = c.env.JOBS.newUniqueId().toString();
-      await registerJob(c.env.BILLING, jobId, payer, payer ? "key" : "free", parsed.data.urls.length, micros);
+      await registerJob(c.env.BILLING, jobId, payer, payer ? "key" : "free", parsed.data.urls.length, micros, "batch");
       const stub = c.env.JOBS.get(c.env.JOBS.idFromString(jobId));
       const res = await stub.fetch("https://job/", {
         method: "POST",
@@ -734,7 +750,7 @@ async function callTool(
       const parsed = crawlRequest.safeParse(args);
       if (!parsed.success) return rechazar(parsed.error.issues);
       const jobId = c.env.CRAWLS.newUniqueId().toString();
-      await registerJob(c.env.BILLING, jobId, payer, payer ? "key" : "free", parsed.data.limit, micros);
+      await registerJob(c.env.BILLING, jobId, payer, payer ? "key" : "free", parsed.data.limit, micros, "crawl");
       const stub = c.env.CRAWLS.get(c.env.CRAWLS.idFromString(jobId));
       const res = await stub.fetch("https://crawl/", {
         method: "POST",

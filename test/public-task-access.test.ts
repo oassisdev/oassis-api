@@ -10,6 +10,7 @@ vi.mock('../src/billing/x402',()=>({x402:()=>async(c:any,next:any)=>{
  if(!c.req.header('payment-signature'))return c.json({error:'payment_required'},402);
  await next();
  if(c.req.header('x-test-settle')==='fail')return c.json({error:'settlement_failed'},503);
+ c.header('payment-response',btoa(JSON.stringify({success:true,transaction:'0x'+'ab'.repeat(32),network:'eip155:8453'})));
  return c.res;
 }}));
 function setup(){

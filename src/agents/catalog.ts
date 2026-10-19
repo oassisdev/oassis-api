@@ -40,7 +40,7 @@ export const agentSchemas = {
     .object({
       domain: z.string().url().max(2048).describe("The competitor's home page, for example https://example.com."),
       sections: z
-        .array(z.string().regex(/^\/[^\s]*$/).max(200))
+        .array(z.string().regex(/^\/(?![\/\\])[^\s\\]*$/).max(200))
         .min(1)
         .max(10)
         .default(["/pricing", "/blog", "/changelog"])

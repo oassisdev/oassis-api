@@ -72,7 +72,7 @@ When something has to be **filled in or clicked**, not just read:
 
 1. `POST /session` with a url. You get a `sessionId` and the `controls` map.
 2. `POST /act` with that `sessionId` and a list of actions.
-3. `DELETE /session/{sessionId}` when you are done, which stops the clock.
+3. `POST /web/v1/session/{sessionId}/close` when you are done, which stops the clock.
 
 Actions: `{"navigate":"…"}`, `{"click":{"ref":"…"}}`, `{"type":{"ref":"…","text":"…"}}`,
 `{"select":{"ref":"…","value":"…"}}`, `{"press":"Enter"}`, `{"scroll":{"to":"bottom"}}`,

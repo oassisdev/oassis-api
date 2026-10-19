@@ -94,6 +94,13 @@ export function fichaDe(
     // The generated description wins when the schema carries one: it sits next to the
     // rule it describes and cannot drift from it.
     properties[clave] = campo.description ? campo : { ...campo, ...(PROSE[clave] ? { description: PROSE[clave] } : {}) };
+    // Refinements reject these options at runtime; do not offer them in either catalog.
+    if (clave === 'binaryAs') properties[clave] = { ...properties[clave], enum: ['base64'] };
+    if (clave === 'json' && properties[clave]?.properties) {
+      const nested = { ...(properties[clave]!.properties as Record<string, unknown>) };
+      delete nested.model;
+      properties[clave] = { ...properties[clave], properties: nested };
+    }
   }
 
   const required = (options.required ?? generada.required ?? []).filter((k) => k in properties);

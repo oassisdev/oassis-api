@@ -110,12 +110,21 @@ export async function recordWalletPayment(
   identity: string,
   micros: number,
   route: string,
+  headers: Headers,
 ): Promise<void> {
+  // Verification authorizes the handler; only the settlement receipt proves payment.
+  const encoded = headers.get("payment-response") ?? headers.get("x-payment-response");
+  const receipt = encoded ? JSON.parse(atob(encoded)) as { success?: boolean; transaction?: string } : null;
+  if (!receipt?.success || !/^0x[0-9a-f]{64}$/i.test(receipt.transaction ?? "")) {
+    throw new Error("x402 settlement receipt missing or invalid; no confirmed payment recorded");
+  }
   await db
     .prepare(
-      `INSERT INTO transactions (account, at, micros, concept, route) VALUES (?, ?, ?, ?, ?)`,
+      `INSERT INTO transactions (account, at, micros, concept, route, reference)
+       SELECT ?1, ?2, ?3, ?4, ?5, ?6 WHERE NOT EXISTS
+       (SELECT 1 FROM transactions WHERE concept = 'x402' AND reference = ?6)`,
     )
-    .bind(identity, Date.now(), -micros, "x402", route)
+    .bind(identity, Date.now(), -micros, "x402", route, receipt.transaction)
     .run();
 }
 
@@ -204,13 +213,14 @@ export async function registerJob(
   gate: "key" | "x402" | "free",
   urls: number,
   chargedMicros: number,
+  operation?: "batch" | "crawl",
 ): Promise<void> {
   await db
     .prepare(
-      `INSERT INTO jobs (id, account, gate, created_at, urls, charged_micros)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO jobs (id, account, gate, created_at, urls, charged_micros, operation)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
     )
-    .bind(id, account, gate, Date.now(), urls, chargedMicros)
+    .bind(id, account, gate, Date.now(), urls, chargedMicros, operation ?? null)
     .run();
 }
 

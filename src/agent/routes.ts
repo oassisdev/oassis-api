@@ -60,7 +60,7 @@ agentRoutes.post(RESEARCH_ROUTE,async(c)=>{
  const status=response?.status??c.res.status;
  if(accepted&&status>=200&&status<300){
   // Start the alarm only after x402 has successfully settled the payment.
-  await recordWalletPayment(c.env.BILLING,walletIdentity(wallet!),accepted.priceMicros,c.req.path).catch(e=>console.error('task payment log',e));
+  await recordWalletPayment(c.env.BILLING,walletIdentity(wallet!),accepted.priceMicros,c.req.path,(response||c.res).headers).catch(e=>console.error('task payment log',e));
   await c.env.BILLING.prepare("UPDATE accounts SET note=json_set(note,'$.paid',1) WHERE id=?").bind(accepted.account).run();
   await kick(c.env,accepted.taskId).catch(e=>console.error('task kick',e));
  }else if(accepted){await cancelTask(c.env,accepted.account,accepted.taskId);}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Context } from "hono";
-import { SUPPORT_EMAIL, privacyPage, supportPage, termsPage } from "../src/legal";
+import { SUPPORT_EMAIL, notFoundPage, privacyPage, termsPage } from "../src/legal";
 import { sitemapXml } from "../src/landing";
 import type { Env } from "../src/types";
 
@@ -10,7 +10,6 @@ const ctx = (host = "oassis.dev") =>
 
 describe("the pages a directory demands", () => {
   const privacy = privacyPage(ctx());
-  const support = supportPage(ctx());
 
   /** A directory rejects a submission outright over a missing or vague policy. */
   it("covers what a privacy policy has to cover", () => {
@@ -19,9 +18,14 @@ describe("the pages a directory demands", () => {
     }
   });
 
-  it("gives one address that a person actually reads, on both pages", () => {
+  it("gives one address that a person actually reads", () => {
     expect(privacy).toContain(SUPPORT_EMAIL);
-    expect(support).toContain(SUPPORT_EMAIL);
+  });
+
+  it("answers an unknown address on the site with a page that leads back", () => {
+    const html = notFoundPage(ctx());
+    expect(html).toContain("Page not found");
+    expect(html).toContain('href="https://oassis.dev/"');
   });
 
   /** A page nothing links to is a page nobody finds. */
@@ -29,7 +33,7 @@ describe("the pages a directory demands", () => {
     const map = sitemapXml(ctx());
     expect(map).toContain("/privacy");
     expect(map).toContain("/terms");
-    expect(map).toContain("/support");
+    expect(map).not.toContain("/support");
   });
 
   /**
@@ -52,8 +56,6 @@ describe("the pages a directory demands", () => {
   });
 
   it("is written in English, like everything a client reads", () => {
-    for (const html of [privacy, support]) {
-      expect(html).not.toMatch(/[áéíóúñ¿¡]|\b(gratis|precio|privacidad)\b/i);
-    }
+    expect(privacy).not.toMatch(/[áéíóúñ¿¡]|\b(gratis|precio|privacidad)\b/i);
   });
 });

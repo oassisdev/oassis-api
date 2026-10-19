@@ -187,6 +187,10 @@ export const sessionRequest = scrapeRequest
       fail("The `elements` format needs `selectors`.", ["selectors"]);
     if (v.formats.includes("json") && !v.json?.prompt && !v.json?.schema)
       fail("The `json` format needs `json.prompt` or `json.schema`.", ["json"]);
+    if (v.json?.model)
+      fail("`json.model` is not available yet: the service picks the model.", ["json", "model"]);
+    if (v.binaryAs === "url")
+      fail('`binaryAs: "url"` is not available yet; use `base64`.', ["binaryAs"]);
   });
 
 /** Acting on an open session and looking at the result. */
@@ -249,6 +253,10 @@ export const batchRequest = scrapeRequest
       fail("The `elements` format needs `selectors`.", ["selectors"]);
     if (v.formats.includes("json") && !v.json?.prompt && !v.json?.schema)
       fail("The `json` format needs `json.prompt` or `json.schema`.", ["json"]);
+    if (v.json?.model)
+      fail("`json.model` is not available yet: the service picks the model.", ["json", "model"]);
+    if (v.binaryAs === "url")
+      fail('`binaryAs: "url"` is not available yet; use `base64`.', ["binaryAs"]);
 
     if (new Set(v.urls).size !== v.urls.length)
       fail("The same url appears twice: a batch charges per url.", ["urls"]);
@@ -325,6 +333,10 @@ export const crawlRequest = scrapeRequest
       fail("The `elements` format needs `selectors`.", ["selectors"]);
     if (v.formats.includes("json") && !v.json?.prompt && !v.json?.schema)
       fail("The `json` format needs `json.prompt` or `json.schema`.", ["json"]);
+    if (v.json?.model)
+      fail("`json.model` is not available yet: the service picks the model.", ["json", "model"]);
+    if (v.binaryAs === "url")
+      fail('`binaryAs: "url"` is not available yet; use `base64`.', ["binaryAs"]);
   });
 
 export type CrawlRequest = z.infer<typeof crawlRequest>;

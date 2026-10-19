@@ -27,7 +27,7 @@ export function prefix(c: Context<{ Bindings: Env }>): string {
  */
 export function cacheableDoc(c: Context<{ Bindings: Env }>, body: unknown): Response {
   return c.json(body as never, 200, {
-    "cache-control": "public, max-age=3600",
+    "cache-control": "public, max-age=0, must-revalidate",
   });
 }
 

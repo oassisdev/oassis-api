@@ -171,3 +171,12 @@ describe("what each tool admits about itself", () => {
     expect(readOnly).toEqual(["web_crawl", "web_map", "web_scrape", "web_scrape_batch", "web_search_exa", "web_task_status"]);
   });
 });
+
+it('GET discovery and initialization describe the same credits, routes and tool catalog as tools/list',async()=>{
+ const response=await mcp.request('https://api.oassis.dev/mcp',{},env);expect(response.status).toBe(200);expect(response.headers.get('cache-control')).toContain('must-revalidate');const p=await response.json() as any;
+ const list=await (await rpc({jsonrpc:'2.0',id:1,method:'tools/list'})).json() as any;
+ expect(p.toolCatalog).toEqual(list.result.tools);expect(p.tools).toEqual(p.toolCatalog.map((t:any)=>t.name));
+ expect(p.credits).toMatchObject({unit_usd:0.002,trial:100,welcome:1000});expect(p.access.http).toContain('same API key');
+ expect(p.families.find((f:any)=>f.name==='Scheduled Agents')).toMatchObject({http_prefix:'/agents/v1',tools:[]});
+ const init=await (await rpc({jsonrpc:'2.0',id:2,method:'initialize'})).json() as any;expect(init.result.instructions).toContain('HTTP supports the same Bearer API key');
+});

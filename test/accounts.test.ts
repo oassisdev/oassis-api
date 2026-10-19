@@ -2,7 +2,7 @@ import {createRequire} from 'node:module';
 import {readFileSync,readdirSync} from 'node:fs';
 const {DatabaseSync}=createRequire(import.meta.url)('node:sqlite');
 import { describe, expect, it } from "vitest";
-import { charge, generateKey, hashKey, KEY_PREFIX, sessionAccess } from "../src/billing/accounts";
+import { charge, recordWalletPayment, generateKey, hashKey, KEY_PREFIX, sessionAccess } from "../src/billing/accounts";
 
 /**
  * Fake D1: only enough to exercise the charging logic, which is what decides
@@ -91,4 +91,18 @@ describe("session access", () => {
     expect(sessionAccess(null, "acct-1")).toBe("not_found");
     expect(sessionAccess(null, null)).toBe("not_found");
   });
+});
+
+describe('wallet settlement receipts',()=>{
+ it('stores the settlement transaction without changing prepaid balances',async()=>{
+  const {db,state}=fakeD1(50000);const tx='0x'+'ab'.repeat(32);
+  const headers=new Headers({'payment-response':btoa(JSON.stringify({success:true,transaction:tx,network:'eip155:8453'}))});
+  await recordWalletPayment(db,'wallet:0x123',2000,'/web/v1/scrape',headers);
+  expect(await db.prepare('SELECT reference,micros FROM transactions').first()).toEqual({reference:tx,micros:-2000});expect(state.balance).toBe(50000);
+  await recordWalletPayment(db,'wallet:0x123',2000,'/web/v1/scrape',headers);expect(state.entries).toHaveLength(1);
+ });
+ it.each([null,{success:false,transaction:'0x'+'ab'.repeat(32)},{success:true,transaction:'invalid'}])('does not create a confirmed charge for an absent or failed receipt: %j',async(receipt)=>{
+  const {db,state}=fakeD1(50000);const headers=new Headers();if(receipt)headers.set('x-payment-response',btoa(JSON.stringify(receipt)));
+  await expect(recordWalletPayment(db,'wallet:0x123',2000,'/web/v1/scrape',headers)).rejects.toThrow(/receipt/);expect(state.entries).toEqual([]);
+ });
 });

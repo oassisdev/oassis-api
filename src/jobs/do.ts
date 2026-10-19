@@ -16,7 +16,8 @@
  */
 
 import { DurableObject } from "cloudflare:workers";
-import { credit } from "../billing/accounts";
+import { refundJob } from "./refund";
+import { JobUpdates } from "./serial";
 import { PRICES, inDollars, scrapePrice } from "../billing/prices";
 import { CachedRenderer } from "../cached-renderer";
 import { cacheable } from "../cache";
@@ -36,6 +37,8 @@ interface Stored {
   chargedMicros: number;
   createdAt: number;
   finishedAt?: number;
+  /** A claimed page is billed even if cancellation arrives while it is being read. */
+  inFlight?: boolean;
   state: JobState;
   next: number;
   /** Micros still to give back: failed urls, plus what the cache saved. */
@@ -59,7 +62,13 @@ export type JobMessage =
   | { kind: "cancel" };
 
 export class BatchJob extends DurableObject<Env> {
-  async fetch(request: Request): Promise<Response> {
+  private readonly updates = new JobUpdates();
+
+  fetch(request: Request): Promise<Response> {
+    return this.updates.run(() => this.handle(request));
+  }
+
+  private async handle(request: Request): Promise<Response> {
     const message = (await request.json()) as JobMessage;
     const jobId = this.ctx.id.toString();
 
@@ -91,13 +100,13 @@ export class BatchJob extends DurableObject<Env> {
       if (job.state !== "done" && job.state !== "cancelled") {
         job.state = "cancelled";
         job.finishedAt = Date.now();
+        // The urls never done are refunded: they were paid for and will not run.
+        const pending = Math.max(0, job.req.urls.length - job.next - (job.inFlight ? 1 : 0));
+        job.refundMicros += pending * scrapePrice(job.req.formats);
         await this.ctx.storage.put("job", job);
         await this.ctx.storage.deleteAlarm();
-        // The urls never done are refunded: they were paid for and will not run.
-        const pending = job.req.urls.length - job.next;
-        job.refundMicros += pending * scrapePrice(job.req.formats);
-        await this.refund(job);
       }
+      if (job.refundMicros > 0) await this.refund(job);
       return Response.json({ jobId, status: job.state, done: job.next, total: job.req.urls.length });
     }
 
@@ -132,55 +141,67 @@ export class BatchJob extends DurableObject<Env> {
    * middle costs that chunk and not the whole job.
    */
   async alarm(): Promise<void> {
-    const job = await this.ctx.storage.get<Stored>("job");
-    if (!job || job.state === "cancelled" || job.state === "done") return;
-
-    job.state = "running";
-    const provider = new QuickActionsRenderer(this.env.BROWSER);
-    const urls = job.req.urls.slice(job.next, job.next + CHUNK);
-
-    for (const url of urls) {
-      const req = { ...job.req, url } as unknown as Parameters<typeof read>[0];
-      const renderer = cacheable(req) ? new CachedRenderer(this.env, provider, req.maxAge ?? 0) : provider;
-      try {
-        const res = await read(req, renderer, this.env);
-        const cached = res.metadata.cached ?? [];
-        // What the cache saved is not ours to keep: the client paid a full render.
-        if (cached.length) {
-          job.refundMicros += cached.reduce(
-            (total, f) => total + (scrapePrice([f]) - PRICES.cacheHit),
-            0,
-          );
-        }
-        await this.addResult({
-          url,
-          ok: res.success,
-          data: res.data,
-          errors: res.errors,
-          ...(cached.length ? { cached } : {}),
-          ms: res.metadata.ms,
-        });
-        if (!res.success) job.refundMicros += scrapePrice(job.req.formats);
-      } catch (e) {
-        await this.addResult({
-          url,
-          ok: false,
-          errors: { markdown: e instanceof Error ? e.message : String(e) } as ScrapeResponse["errors"],
-        });
-        job.refundMicros += scrapePrice(job.req.formats);
-      }
-      job.next += 1;
-      await this.ctx.storage.put("job", job);
-    }
-
-    if (job.next >= job.req.urls.length) {
-      job.state = "done";
-      job.finishedAt = Date.now();
-      await this.ctx.storage.put("job", job);
-      await this.refund(job);
+    const initial = await this.ctx.storage.get<Stored>("job");
+    if (!initial) return;
+    if (initial.state === "cancelled" || initial.state === "done") {
+      await this.updates.run(async () => {
+        const current = await this.ctx.storage.get<Stored>("job");
+        if (current) await this.refund(current);
+      });
       return;
     }
-    await this.ctx.storage.setAlarm(Date.now() + 100);
+    const provider = new QuickActionsRenderer(this.env.BROWSER);
+    for (let i = 0; i < CHUNK; i += 1) {
+      const claimed = await this.updates.run(async () => {
+        const job = await this.ctx.storage.get<Stored>("job");
+        if (!job || job.state === "cancelled" || job.state === "done") return null;
+        job.state = "running";
+        job.inFlight = true;
+        await this.ctx.storage.put("job", job);
+        return job;
+      });
+      if (!claimed) return;
+      const job = claimed;
+      const url = job.req.urls[job.next]!;
+      const req = { ...job.req, url } as unknown as Parameters<typeof read>[0];
+      const renderer = cacheable(req) ? new CachedRenderer(this.env, provider, req.maxAge ?? 0) : provider;
+      let res: ScrapeResponse | undefined;
+      let error = "Page read failed";
+      try { res = await read(req, renderer, this.env); }
+      catch (e) { error = e instanceof Error ? e.message : String(e); }
+
+      const terminal = await this.updates.run(async () => {
+        // Cancellation may have happened during the browser request. Never write its stale snapshot.
+        const job = (await this.ctx.storage.get<Stored>("job"))!;
+        if (res) {
+          const cached = res.metadata.cached ?? [];
+          if (!res.success) job.refundMicros += scrapePrice(job.req.formats);
+          else job.refundMicros += cached.reduce((sum, f) => sum + scrapePrice([f]) - PRICES.cacheHit, 0);
+          await this.addResult({ url, ok: res.success, data: res.data, errors: res.errors,
+            ...(cached.length ? { cached } : {}), ms: res.metadata.ms });
+        } else {
+          await this.addResult({ url, ok: false, errors: { markdown: error } as ScrapeResponse["errors"] });
+          job.refundMicros += scrapePrice(job.req.formats);
+        }
+        job.next += 1;
+        job.inFlight = false;
+        if (job.state !== "cancelled" && (job.next >= job.req.urls.length)) {
+          job.state = "done";
+          job.finishedAt = Date.now();
+        }
+        await this.ctx.storage.put("job", job);
+        if (job.state === "cancelled" || job.state === "done") {
+          await this.refund(job);
+          return true;
+        }
+        return false;
+      });
+      if (terminal) return;
+    }
+    await this.updates.run(async () => {
+      const job = await this.ctx.storage.get<Stored>("job");
+      if (job && job.state !== "cancelled" && job.state !== "done") await this.ctx.storage.setAlarm(Date.now() + 100);
+    });
   }
 
   /**
@@ -198,18 +219,14 @@ export class BatchJob extends DurableObject<Env> {
 
   private async refund(job: Stored): Promise<void> {
     if (!job.account || job.refundMicros <= 0) return;
-    const amount = Math.min(job.refundMicros, job.chargedMicros);
+    const amount = Math.min(job.refundMicros, job.chargedMicros - (job.refundedMicros ?? 0));
+    if (amount <= 0) return;
     const why = job.state === "cancelled" ? "urls not run" : "failed urls and cache hits";
     try {
-      await credit(
-        this.env.BILLING,
-        job.account,
-        amount,
-        `refund: batch (${why})`,
-        this.ctx.id.toString(),
-      );
+      await refundJob(this.env.BILLING, job.account, this.ctx.id.toString(), job.refundedMicros ?? 0, amount, `refund: batch (${why})`);
     } catch (e) {
       console.error(`batch refund failed: ${e}`);
+      await this.ctx.storage.setAlarm(Date.now() + 1000);
       return;
     }
     job.refundMicros = 0;

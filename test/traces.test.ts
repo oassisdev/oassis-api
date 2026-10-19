@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
 import { TRACE_DAYS, mountTraceLog, pruneTraces, recordTrace, type Trace } from "../src/traces";
 import { privacyPage } from "../src/legal";
@@ -131,4 +131,22 @@ describe("our own probes", () => {
     );
     expect(sql.join(" ")).toContain("INSERT INTO traces");
   });
+});
+
+it("attributes a free authenticated status read without storing the key", async () => {
+  const captured: unknown[][] = [], pending: Promise<unknown>[] = [];
+  const env = { BILLING: { prepare(sql: string) { return { bind(...args: unknown[]) { return {
+    async first() { return { id: "site:owner", balance: 1000, sessions: 3 }; },
+    async run() { if (sql.includes("INSERT INTO traces")) captured.push(args); return {}; },
+  }; } }; } } } as unknown as Env;
+  const app = new Hono<{ Bindings: Env }>();mountTraceLog(app);
+  app.get("/tasks/v1/crawl/job", c => c.json({ status: "done" }));
+  const res = await app.fetch(new Request("https://api.oassis.dev/tasks/v1/crawl/job", { headers: { authorization: "Bearer oas_fixtureprivate", "cf-connecting-ip": "192.0.2.1" } }), env, { waitUntil(p: Promise<unknown>) { pending.push(p); } } as unknown as ExecutionContext);
+  expect(res.status).toBe(200);await Promise.all(pending);expect(captured).toHaveLength(1);expect(captured[0]?.[11]).toBe("site:owner");expect(JSON.stringify(captured)).not.toContain("oas_fixtureprivate");
+});
+
+it("preserves day one for the current UTC month when 30 rolling days would cut it off", async () => {
+ const clock=vi.spyOn(Date,"now").mockReturnValue(Date.UTC(2026,9,31,20));
+ try { const {env,binds}=db();await pruneTraces(env);expect(binds[0]?.[0]).toBe(Date.UTC(2026,9,1)); }
+ finally { clock.mockRestore(); }
 });
