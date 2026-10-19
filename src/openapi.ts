@@ -1,3 +1,4 @@
+import { WEB_CATALOG, WEB_FAMILIES } from "./product-catalog";
 /**
  * The machine-readable catalogue: `/openapi.json` and `/llms.txt`.
  *
@@ -96,7 +97,7 @@ function agentTaskPaths(): Record<string, unknown> {
     ["/tasks/v1/research"]: {
       get: { tags: ['Discovery'], summary: 'Describe Research Tasks and quote the execution budget', responses: { '402': { description: 'Description and x402 challenge only; nothing is executed or paid.' }, '503': { description: 'Wallet payment unavailable.' } } },
       post: {
-        tags:["Research Tasks"],
+        tags:["Web Tasks"], "x-task-type":"research",
         summary: "Start a research task",
         description:
           "Answers a question by reading public pages, with sources, progress and cost. With an API key, HTTP reserves credits and settles actual cost. Without a key, x402 pays a fixed execution budget in limits.max_cost_usd. MCP start requires an API key and reserves credits, settling actual cost. With an API key, use the owning key for free status/cancel and send Idempotency-Key (required, maximum 100 characters). The x402 response returns access_token: send it as Task-Token for status/cancel. For x402 retries send the same Task-Token and Idempotency-Key (maximum 200 characters). A 202 confirms acceptance, not a completed result.",
@@ -124,28 +125,28 @@ function agentTaskPaths(): Record<string, unknown> {
         "x-mcp-tool": "web_task_start",
       },
     },
-    ["/tasks/v1/research/{task_id}"]: {
+    ["/tasks/v1/research/{id}"]: {
       get: {
-        tags:["Research Tasks"],
+        tags:["Web Tasks"], "x-task-type":"research",
         summary: "Read a task",
         description:
           "Status, progress, operations, sources with the evidence used, limitations, the result when there is one, and billing: reserved, spent, released and settlement.",
         operationId: "web_task_status",
         security: bearer,
-        parameters: [{ name: "task_id", in: "path", required: true, schema: { type: "string" } }],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
         responses: { "200": { description: "The task." }, ...notFound, ...unauthorized },
         "x-mcp-tool": "web_task_status",
       },
     },
-    ["/tasks/v1/research/{task_id}/cancel"]: {
+    ["/tasks/v1/research/{id}/cancel"]: {
       post: {
-        tags:["Research Tasks"],
+        tags:["Web Tasks"], "x-task-type":"research",
         summary: "Cancel a task",
         description:
           "Stops new operations and returns the unused budget. An operation already running cannot always be stopped remotely: it is charged as it completes. Cancelling a finished task changes nothing.",
         operationId: "web_task_cancel",
         security: bearer,
-        parameters: [{ name: "task_id", in: "path", required: true, schema: { type: "string" } }],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
         responses: {
           "202": { description: "Cancellation requested. The body is the task as it stands." },
           "200": { description: "The task had already finished: nothing changed. The body is the task." },
@@ -178,7 +179,7 @@ export function openapi(c: Context<{ Bindings: Env }>): Record<string, unknown> 
       },
       post: {
         summary,
-        tags:[full.startsWith("/tasks/")?"Extraction Tasks":"Web Tools"],
+        tags:[full.startsWith("/tasks/")?"Web Tasks":"Web Tools"],
         description: about + (full.startsWith("/tasks/") ? " Returns a jobId for asynchronous work. A successful start is acceptance, not completion; poll the job status. Account credits can be refunded for unused work; x402 has no automatic on-chain refund." : " HTTP supports the same Bearer API key and shared credits as MCP, or an independent x402 wallet payment."),
         operationId: tool,
         security: [{apiKey:[]},{}],
@@ -221,7 +222,7 @@ export function openapi(c: Context<{ Bindings: Env }>): Record<string, unknown> 
 
   for(const [name,tool] of [['scrape/batch','web_batch_status'],['crawl','web_crawl_status']] as const){
    const path='/tasks/v1/'+name+'/{id}';
-   const shared={tags:['Extraction Tasks'],security:[{apiKey:[]},{walletPayment:[]}],parameters:[{name:'id',in:'path',required:true,schema:{type:'string'}}]};
+   const shared={tags:['Web Tasks'],security:[{apiKey:[]},{walletPayment:[]}],parameters:[{name:'id',in:'path',required:true,schema:{type:'string'}}]};
    paths[path]={get:{...shared,operationId:tool,summary:'Read '+name+' status and results',parameters:[...shared.parameters,{name:'limit',in:'query',required:false,schema:{type:'integer',minimum:1,maximum:50,default:50}}],description:'Free for the owner. Authenticate with the same account key or the wallet credentials used to create the job.',responses:{'200':{description:'Job status and results.'},'401':{description:'Invalid API key.'},'404':{description:'Job not found or owned by another caller.'}}}};
    paths[path+'/cancel']={post:{...shared,operationId:tool+'_cancel',summary:'Cancel '+name,description:'Stops pending work. With account credits, unused and failed reads are refunded; an in-flight page may finish and is billed normally. Settled x402 payments have no automatic on-chain refund. The result remains available to the owner.',responses:{'200':{description:'Job cancellation result.'},'401':{description:'Invalid API key.'},'404':{description:'Job not found or owned by another caller.'}}}};
   }
@@ -232,6 +233,15 @@ export function openapi(c: Context<{ Bindings: Env }>): Record<string, unknown> 
   };
   for (const path of ['/openapi.json','/llms.txt']) paths[path] = { get: { tags: ['Discovery'], summary: 'Read the public ' + path.slice(1) + ' catalog', responses: { '200': { description: 'Public documentation; no charge.' } } } };
 
+  for (const op of WEB_CATALOG) {
+    const methods = paths[op.path] as Record<string, Record<string, unknown>> | undefined;
+    const definition = methods?.[op.method.toLowerCase()];
+    if (!definition) throw new Error('OpenAPI catalog mismatch: ' + op.id);
+    definition.tags = [WEB_FAMILIES.find(f => f.id === op.family)!.name];
+    definition['x-mcp-tool'] = op.mcp;
+    if (op.mcpArguments) definition['x-mcp-arguments'] = op.mcpArguments;
+  }
+
   return {
     openapi: "3.1.0",
     info: {
@@ -241,15 +251,14 @@ export function openapi(c: Context<{ Bindings: Env }>): Record<string, unknown> 
         "Scrape any page or document to markdown, map and crawl whole sites, drive a real browser, " +
         "and search the web. " +
         "Pay per call with a wallet and no account at all (x402, USDC on Base). MCP includes a 100-credit trial; further use requires an API key and credits. " +
-        "Web Tools use /web/v1; asynchronous extraction and research use /tasks/v1; scheduled monitoring services use /agents/v1. A 402 is a quote, not a payment. " + CREDIT_GUIDE,
+        "Web Tools use /web/v1; Web Tasks (asynchronous extraction and research) use /tasks/v1; scheduled monitoring services use /agents/v1. A 402 is a quote, not a payment. " + CREDIT_GUIDE,
       "x-mcp": `${base}/mcp`,
       "x-logo": { url: `${origin(c)}/icon-512.png`, altText: "oassis" },
     },
     servers: [{ url: base }],
+    "x-product-catalog": WEB_CATALOG,
     tags: [
-      { name: 'Web Tools', description: 'Individual web operations: /web/v1.' },
-      { name: 'Extraction Tasks', description: 'Asynchronous batch and crawl jobs: /tasks/v1. Poll results; cancellation has its own POST route.' },
-      { name: 'Research Tasks', description: 'One-shot public-web research: /tasks/v1/research. Accepted work can finish completed, partial, failed or cancelled.' },
+      ...WEB_FAMILIES.map(f => ({ name: f.name, description: f.id === 'web' ? 'Individual operations: /web/v1.' : 'Asynchronous batch extraction, crawling and research: /tasks/v1. Separate start, status and cancellation operations.' })),
       { name: 'Agents', description: 'Scheduled monitoring services: /agents/v1. Currently free with an API key; not MCP tools.' },
       { name: 'Account', description: 'Shared API-key credits.' },
       { name: 'Discovery', description: 'Descriptions and challenges; these do not execute tools.' },
@@ -274,7 +283,7 @@ export function openapi(c: Context<{ Bindings: Env }>): Record<string, unknown> 
 export function llmsTxt(c: Context<{ Bindings: Env }>): string {
   const spec = openapi(c) as { info: { description: string }; paths: Record<string, Record<string, { summary?: string; description?: string; 'x-x402'?: { price?: string }; 'x-mcp-tool'?: string }>> };
   const base = origin(c);
-  const lines = ['# oassis', '', '> Web infrastructure for AI agents: Web Tools, Tasks and scheduled Agents.', '',
+  const lines = ['# oassis', '', '> Web infrastructure for AI agents: Web Tools, Web Tasks and scheduled Agents.', '',
     '## Access and credits', '', CREDIT_GUIDE, '',
     '- **MCP:** 100 trial credits for scrape/map, once per trial identity. No account or key is needed for that trial. Other paid tools and further use require an API key and available credits.',
     '- **HTTP with an API key:** send Authorization: Bearer oas_... and use the same account credits as MCP.',
@@ -290,8 +299,7 @@ export function llmsTxt(c: Context<{ Bindings: Env }>): string {
     '- Use only the definitive routes below. Older /v1, /agent/v1 and extraction under /web/v1 are not aliases.', ''];
   const groups = [
     ['Web Tools', (path: string) => path.startsWith('/web/v1') && path !== '/web/v1/account'],
-    ['Extraction Tasks', (path: string) => path.startsWith('/tasks/v1') && !path.startsWith('/tasks/v1/research')],
-    ['Research Tasks', (path: string) => path.startsWith('/tasks/v1/research')],
+    ['Web Tasks', (path: string) => path.startsWith('/tasks/v1')],
     ['Scheduled Agents', (path: string) => path.startsWith('/agents/v1')],
     ['Account', (path: string) => path === '/web/v1/account'],
   ] as const;

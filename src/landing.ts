@@ -1,3 +1,4 @@
+import { WEB_CATALOG } from "./product-catalog";
 /**
  * The one page written for a person.
  *
@@ -191,26 +192,9 @@ const apiTable = (rows: ApiRow[]) =>
     .map(([tool, route, what]) => `<tr><td><code>${escape(tool)}</code></td><td><code>${escape(route)}</code></td><td>${escape(what)}</td></tr>`)
     .join("")}</tbody></table>`;
 
-const WEB_TOOLS: ApiRow[] = [
-  ["web_scrape", "POST /web/v1/scrape", "Read a page or document as markdown, html, links, controls, screenshot, PDF or JSON."],
-  ["web_map", "POST /web/v1/map", "List a site's urls, from its sitemap and optionally the page itself."],
-  ["web_search_exa", "POST /web/v1/search", "Search the web with Exa's index."],
-  ["web_session_open", "POST /web/v1/session", "Open a browser session on a page and get its controls."],
-  ["web_act", "POST /web/v1/act", "Click, type, select, scroll and wait in an open session."],
-  ["web_session_close", "POST /web/v1/session/:id/close", "Close the browser session and settle any outstanding time."],
-  ["web_feedback", "POST /web/v1/feedback", "Report a result that was wrong."],
-  ["-", "GET /web/v1/account", "Read your account. HTTP only."],
-];
-
-const WEB_TASKS: ApiRow[] = [
-  ["web_scrape_batch", "POST /tasks/v1/scrape/batch", "Read a list of urls you give it, as a background job. Returns an id."],
-  ["web_batch_status", "GET /tasks/v1/scrape/batch/:id", "Check a batch and collect its results. POST /:id/cancel stops it."],
-  ["web_crawl", "POST /tasks/v1/crawl", "Follow a site's links and read its pages, as a background job. Returns an id."],
-  ["web_crawl_status", "GET /tasks/v1/crawl/:id", "Check a crawl: pages read, discovered and still queued. POST /:id/cancel stops it."],
-  ["web_task_start", "POST /tasks/v1/research", "Start research: a question answered from public pages, with sources."],
-  ["web_task_status", "GET /tasks/v1/research/:id", "Follow a research task's progress and result."],
-  ["web_task_cancel", "POST /tasks/v1/research/:id/cancel", "Ask a research task to stop."],
-];
+const productRows = (family: 'web' | 'tasks'): ApiRow[] => WEB_CATALOG.filter(op => op.family === family).map(op => [op.mcp, op.method + ' ' + op.path, op.description]);
+const WEB_TOOLS = productRows('web');
+const WEB_TASKS = productRows('tasks');
 
 const AGENTS: ApiRow[] = [
   ["-", "GET /agents/v1/price-watch", "Price watch: reads product pages on your schedule and reports price changes and drops."],
@@ -279,13 +263,13 @@ const pricingSection = () => `<section class="content-section" id="pricing" aria
 <p class="section-lead">Status, cancellation and account are free. A trial of 100 credits covers scrape and map over MCP. Everything else needs an API key with credits, or an x402 payment over HTTP.</p>
 <p>1 credit = $0.002. Credits come in three packs: ${CREDIT_PACKAGES.map((pack) => `$${pack.cents / 100} for ${pack.credits.toLocaleString("en-US")} credits`).join(", ")}. Purchased credits do not expire.</p>
 ${priceTable()}
-<p class="muted">Prices are quoted per call before any work happens. A research task reserves its budget and charges what it actually used; over HTTP, the budget is charged as a fixed package.</p>
+<p class="muted">Prices are quoted per call before any work happens. A research task reserves its budget and charges what it actually used; with HTTP/x402, the budget is charged as a fixed package. HTTP with an API key uses the same reserve and actual-cost settlement as MCP.</p>
 </section>`;
 
 /** The questions a reader asks before signing up, in the order they ask them. */
 const FAQS: [string, string][] = [
   ["What is Oassis?", "Web infrastructure for AI agents. Search, read, crawl and control a browser through one API, delegate research to Tasks, and run scheduled Agents."],
-  ["What is the difference between Web Tools and Tasks?", "With Web Tools you choose each operation and build your own workflow. With Tasks you give a research question; Oassis plans, reads public pages and returns an answer with its sources."],
+  ["What is the difference between Web Tools and Web Tasks?", "Web Tools return an individual operation in the same response. Web Tasks run batch extraction, crawling or research in the background: start a job, follow its progress and collect its results. Research returns an answer with sources."],
   ["Do I need an account or an API key?", "MCP includes 100 trial credits for scrape and map. Other tools, Tasks and scheduled Agents need an account and an API key. HTTP calls can be paid per call with x402, without an account."],
   ["How many free credits do I get?", "100 trial credits over MCP for scrape and map. A verified account gets 1,000 welcome credits once. Purchased credits do not expire."],
   ["What is MCP?", "The Model Context Protocol lets AI clients discover and call tools. Point any MCP-compatible client at https://api.oassis.dev/mcp to use Oassis."],
@@ -356,7 +340,7 @@ ${FOOTER_STYLE}
 <div class="wrap">
 <header class="site-nav"><a class="brand" href="/" aria-label="oassis home"><img src="/favicon.svg" alt="" width="35" height="35">oassis</a><div class="header-links"><nav aria-label="Main"><a href="/#web-tools">Web Tools</a><a href="/#web-tasks">Web Tasks</a><a href="/#agents">Agents</a><a href="/#faq">FAQ</a></nav>${headerAccount(account)}</div></header>
 <section class="launch claim" aria-labelledby="claim-title">
-<div class="launch-top"><h1 id="claim-title">The web, for<br>your agents.</h1><div class="launch-copy"><div class="claim-lines"><p><span class="claim-part">Web Tools</span> for each step.</p><p><span class="claim-part">Tasks</span> for background jobs and research.</p><p><span class="claim-part">Agents</span> that watch pages on a schedule.</p></div><div class="launch-actions"><a class="button" href="/mcp">Connect via MCP</a><a class="button secondary" href="/signup">Get Api Key</a></div><p class="connection-note">Try MCP with 100 credits. Sign up for 1,000 welcome credits and create your API key.</p></div></div>
+<div class="launch-top"><h1 id="claim-title">The web, for<br>your agents.</h1><div class="launch-copy"><div class="claim-lines"><p><span class="claim-part">Web Tools</span> for each step.</p><p><span class="claim-part">Web Tasks</span> for background jobs and research.</p><p><span class="claim-part">Agents</span> that watch pages on a schedule.</p></div><div class="launch-actions"><a class="button" href="/mcp">Connect via MCP</a><a class="button secondary" href="/signup">Get Api Key</a></div><p class="connection-note">Try MCP with 100 credits. Sign up for 1,000 welcome credits and create your API key.</p></div></div>
 </section>
 ${apiSections()}
 ${pricingSection()}

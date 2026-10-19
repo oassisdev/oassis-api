@@ -93,30 +93,49 @@ MCP includes a one-time 100-credit trial for scrape and map. Other tools and fur
 
 ---
 
-## The 11 operations
+## Web Tools and Web Tasks
 
-Over HTTP each one is paid. Each one is served at `api.oassis.dev/web/v1/…` and at `web.oassis.dev/v1/…`. Both hosts count and charge the same.
+The same definitive routes are served on api.oassis.dev, web.oassis.dev and oassis.dev.
+Web Tools return individual results; Web Tasks start asynchronous batch, crawl or research jobs.
+Account credits are separate: `GET /web/v1/account` requires an API key.
 
-| Method | Path | What it does | MCP tool | Price |
-|---|---|---|---|---|
-| POST | `/web/v1/scrape` | Reads a page or document in the formats you ask for: `markdown`, `html`, `links`, `controls`, `accessibility`, `elements`, `screenshot`, `pdf`, `json` | `web_scrape` | Per output (see pricing) |
-| POST | `/web/v1/session` | Opens a browser on a URL and returns its controls, each with a `ref` | `web_session_open` | $0.005 for the first minute + outputs |
-| POST | `/web/v1/act` | Click, type, select, wait, scroll on an open session | `web_act` | $0.0005 per action + outputs |
-| POST | `/web/v1/session/:id/close` | Closes a session | `web_session_close` | Free (time used is billed) |
-| POST | `/tasks/v1/scrape/batch` | Reads a list of URLs as a background job | `web_scrape_batch` | One scrape per URL |
-| GET | `/tasks/v1/scrape/batch/:id` | Status and results of a batch | `web_batch_status` | Free |
-| POST | `/tasks/v1/scrape/batch/:id/cancel` | Cancel a batch | `web_batch_status` with cancel | Free |
-| POST | `/web/v1/map` | Lists a site's URLs from its sitemap (optionally with the page) | `web_map` | $0.002 (no page) · $0.003 (with page) |
-| POST | `/tasks/v1/crawl` | Follows a site's links and reads each page, as a job | `web_crawl` | Per page read, charged up front |
-| GET | `/tasks/v1/crawl/:id` | Status and results of a crawl | `web_crawl_status` | Free |
-| POST | `/tasks/v1/crawl/:id/cancel` | Cancel a crawl | `web_crawl_status` with cancel | Free |
-| POST | `/web/v1/search` | Web search with Exa's index | `web_search_exa` | What Exa charges (≈ $0.007) |
-| POST | `/web/v1/feedback` | Report a result that was wrong | `web_feedback` | Free |
-| POST | `/tasks/v1/research` | Start a research task (API key and balance) | `web_task_start` | $0.002 + steps |
-| GET | `/tasks/v1/research/{id}` | Status, progress, sources, result and billing | `web_task_status` | Free |
-| POST | `/tasks/v1/research/{id}/cancel` | Stop a task and return the unused budget | `web_task_cancel` | Free |
+<!-- WEB_CATALOG_START -->
+### Web Tools
 
-MCP and HTTP share credit prices. One credit = $0.002; verified accounts receive 1,000 welcome credits once. Any `GET` on a route returns, for free, the fields it expects and what it costs.
+| MCP tool | HTTP route | What it does |
+| --- | --- | --- |
+| `web_scrape` | `POST /web/v1/scrape` | Read a page or document in the requested formats. |
+| `web_map` | `POST /web/v1/map` | List a site's URLs from its sitemap and optionally the page. |
+| `web_search_exa` | `POST /web/v1/search` | Search the web. |
+| `web_session_open` | `POST /web/v1/session` | Open a browser session and inspect its controls. |
+| `web_act` | `POST /web/v1/act` | Interact with an open browser session. |
+| `web_session_close` | `POST /web/v1/session/{id}/close` | Close the browser session and settle any outstanding time. |
+| `web_feedback` | `POST /web/v1/feedback` | Report whether a result was correct. Free. |
+
+### Web Tasks
+
+| MCP tool | HTTP route | What it does |
+| --- | --- | --- |
+| `web_scrape_batch` | `POST /tasks/v1/scrape/batch` | Start a batch extraction job from a supplied list of URLs. |
+| `web_batch_status` | `GET /tasks/v1/scrape/batch/{id}` | Read batch status and collect its results. |
+| `web_batch_status` | `POST /tasks/v1/scrape/batch/{id}/cancel` | Cancel pending batch work. With MCP, send cancel: true. |
+| `web_crawl` | `POST /tasks/v1/crawl` | Start a crawl job that discovers and reads linked pages. |
+| `web_crawl_status` | `GET /tasks/v1/crawl/{id}` | Read crawl status and collect its results. |
+| `web_crawl_status` | `POST /tasks/v1/crawl/{id}/cancel` | Cancel pending crawl work. With MCP, send cancel: true. |
+| `web_task_start` | `POST /tasks/v1/research` | Start research from public pages and return an answer with sources. |
+| `web_task_status` | `GET /tasks/v1/research/{id}` | Read research progress, sources, result and billing. |
+| `web_task_cancel` | `POST /tasks/v1/research/{id}/cancel` | Cancel pending research work. |
+<!-- WEB_CATALOG_END -->
+
+Batch and crawl cancellation reuse their MCP status tool with `cancel: true`; HTTP has
+an explicit POST cancellation route. A successful start confirms acceptance, not completion.
+MCP and API-key HTTP share credit prices. x402 is an independent payment option for paid
+starts. Status and cancellation do not create a new payment; eligible refunds return to
+account credits, with no automatic on-chain refund for settled x402 payments.
+
+GET discovery on paid start routes returns a 402 description and quote without execution.
+Owner-authorized GET status returns the job status and results. Replace `{id}` with the
+identifier returned at creation.
 
 ---
 
@@ -169,7 +188,7 @@ and under the organization [github.com/oassisdev](https://github.com/oassisdev).
 
 ---
 
-## Agent tasks
+## Web Tasks: research
 
 Ask a question in plain words and get a structured answer with its sources. The agent plans
 its own steps: it decides what to search, which pages to read, and when it has enough.
@@ -280,8 +299,8 @@ See [billing operations](docs/prepaid-billing.md) for migrations, Stripe activat
 The same paths are used on every API host. There are no old-path aliases or redirects.
 
 - Web Tools: `/web/v1/scrape`, `/map`, `/search`, `/session`, `/act`, `/feedback`. Session close: `POST /web/v1/session/:id/close`.
-- Extraction Tasks: `POST /tasks/v1/scrape/batch` and `POST /tasks/v1/crawl`; status: `GET` on the creation path plus `/:id`; cancellation: `POST` on that status path plus `/cancel`.
-- Research Tasks: `POST /tasks/v1/research`; `GET /tasks/v1/research/:id`; `POST /tasks/v1/research/:id/cancel`.
+- Web Tasks — extraction: `POST /tasks/v1/scrape/batch` and `POST /tasks/v1/crawl`; status: `GET` on the creation path plus `/:id`; cancellation: `POST` on that status path plus `/cancel`.
+- Web Tasks — research: `POST /tasks/v1/research`; `GET /tasks/v1/research/{id}`; `POST /tasks/v1/research/{id}/cancel`.
 - Agent catalog: `GET /agents/v1` and `GET /agents/v1/:agent`. Create a service: `POST /agents/v1/:agent`.
 - Owned services: `GET /agents/v1/services` (latest 100), `GET /agents/v1/services/:id`, `POST /agents/v1/services/:id/cancel`. Cancellation is idempotent, retains the report and stops future runs. A read already in progress may finish.
 

@@ -1,3 +1,4 @@
+import { WEB_CATALOG } from "./product-catalog";
 /**
  * oassis-api — web extraction and browser control for agents.
  *
@@ -127,23 +128,8 @@ app.get("/", async (c) => {
     service: "oassis-api",
     docs: `${origin(c)}${prefixForHost(c)}/scrape`,
     endpoints: [
-      'POST /web/v1/scrape',
-      'POST /web/v1/map',
-      'POST /web/v1/search',
-      'POST /web/v1/session',
-      'POST /web/v1/act',
-      'POST /web/v1/session/:id/close',
-      'POST /web/v1/feedback',
+      ...WEB_CATALOG.map(op => op.method + ' ' + op.path),
       'GET /web/v1/account',
-      'POST /tasks/v1/scrape/batch',
-      'GET /tasks/v1/scrape/batch/:id',
-      'POST /tasks/v1/scrape/batch/:id/cancel',
-      'POST /tasks/v1/crawl',
-      'GET /tasks/v1/crawl/:id',
-      'POST /tasks/v1/crawl/:id/cancel',
-      'POST /tasks/v1/research',
-      'GET /tasks/v1/research/:id',
-      'POST /tasks/v1/research/:id/cancel',
       'GET /agents/v1',
       'GET /agents/v1/services',
       'GET /agents/v1/:agent',

@@ -155,7 +155,7 @@ describe("agent task paths", () => {
     expect(start?.post.security).toEqual([{apiKey:[]},{}]);
     expect(start?.post["x-x402"]).toBeDefined();
     expect(spec.components.securitySchemes.taskToken).toBeDefined();
-    expect(Object.keys(spec.paths).some((p) => p.endsWith("/tasks/v1/research/{task_id}/cancel"))).toBe(true);
+    expect(Object.keys(spec.paths).some((p) => p.endsWith("/tasks/v1/research/{id}/cancel"))).toBe(true);
   });
 });
 

@@ -1,3 +1,4 @@
+import { WEB_CATALOG, WEB_FAMILIES } from "./product-catalog";
 /**
  * The MCP surface: the same service, spoken in the language ChatGPT, Claude and
  * agent runtimes understand.
@@ -365,7 +366,7 @@ mcp.post("/mcp", async (c) => {
             "Web extraction and browser control for agents.",
             "MCP includes a one-time 100-credit trial for scrape and map. An API key unlocks all tools using your shared balance. Verified accounts receive 1,000 welcome credits.",
             CREDIT_GUIDE,
-            "HTTP supports the same Bearer API key and account credits, or independent x402 wallet payment. Web Tools use /web/v1; extraction and research Tasks use /tasks/v1; scheduled Agents use /agents/v1 and currently have no MCP tools.",
+            "HTTP supports the same Bearer API key and account credits, or independent x402 wallet payment. Web Tools use /web/v1; Web Tasks (extraction and research) use /tasks/v1; scheduled Agents use /agents/v1 and currently have no MCP tools.",
             "To read a page use web_scrape; to fill in or click something, open a session with web_session_open and act with web_act; to find urls use web_map before paying to read them.",
           ].join(" "),
         },
@@ -465,12 +466,11 @@ mcp.get("/mcp", (c) =>
         refunds: 'Eligible refunds return to account credits; settled x402 payments have no automatic on-chain refund.',
       },
       families: [
-        { name: 'Web Tools', http_prefix: '/web/v1', tools: TOOLS.filter(t => !['web_scrape_batch','web_batch_status','web_crawl','web_crawl_status','web_task_start','web_task_status','web_task_cancel'].includes(t.name)).map(t => t.name) },
-        { name: 'Extraction Tasks', http_prefix: '/tasks/v1', tools: ['web_scrape_batch','web_batch_status','web_crawl','web_crawl_status'], lifecycle: 'Starts return jobId; status tools accept cancel:true. Acceptance is not completion.' },
-        { name: 'Research Tasks', http_prefix: '/tasks/v1/research', tools: ['web_task_start','web_task_status','web_task_cancel'], lifecycle: 'An API key reserves the maximum budget; actual work is charged and unused credits released. Poll until a terminal status, including partial.' },
+        ...WEB_FAMILIES.map(f => ({ name: f.name, http_prefix: f.prefix, tools: [...new Set(WEB_CATALOG.filter(op => op.family === f.id).map(op => op.mcp))], operations: WEB_CATALOG.filter(op => op.family === f.id) })),
         { name: 'Scheduled Agents', http_prefix: '/agents/v1', tools: [], agents: ['price-watch','web-watch','competitor-monitor'], access: 'Currently free with an account API key, up to 10 active services per account. HTTP only; daily or weekly schedule.' },
       ],
       toolCatalog: TOOLS,
+      productCatalog: WEB_CATALOG,
       documentation: { llms: origin(c) + '/llms.txt', openapi: origin(c) + '/openapi.json', resources: RESOURCES.map(r => r.uri) },
     },
     200,

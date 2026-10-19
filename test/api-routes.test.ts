@@ -73,9 +73,9 @@ it('lists only owned services and explicitly cancels an agent registration witho
 
 it('publishes every definitive family and its cancellations without retired paths',async()=>{
  const response=await request('/openapi.json');expect(response.status).toBe(200);const spec=await response.json() as any;
- for(const path of ['/tasks/v1/research/{task_id}/cancel','/tasks/v1/crawl/{id}/cancel','/tasks/v1/scrape/batch/{id}/cancel','/agents/v1/services/{id}/cancel'])expect(spec.paths[path]?.post,path).toBeDefined();
+ for(const path of ['/tasks/v1/research/{id}/cancel','/tasks/v1/crawl/{id}/cancel','/tasks/v1/scrape/batch/{id}/cancel','/agents/v1/services/{id}/cancel'])expect(spec.paths[path]?.post,path).toBeDefined();
  for(const path of Object.keys(spec.paths))expect(path).not.toMatch(/^\/v1\/|^\/agent\/|^\/web\/v1\/(?:crawl|scrape\/batch)/);
- const catalog=await (await request('/')).json() as any;expect(catalog.endpoints).toContain('POST /agents/v1/services/:id/cancel');expect(catalog.endpoints).toContain('POST /tasks/v1/crawl/:id/cancel');
+ const catalog=await (await request('/')).json() as any;expect(catalog.endpoints).toContain('POST /agents/v1/services/:id/cancel');expect(catalog.endpoints).toContain('POST /tasks/v1/crawl/{id}/cancel');
 });
 
 it('closes only an owned session with POST /close, with no DELETE alias or extra debit',async()=>{
@@ -93,5 +93,5 @@ it('closes only an owned session with POST /close, with no DELETE alias or extra
  expect(sql.prepare('SELECT COUNT(*) n FROM prepaid_debits').get().n).toBe(0);
  expect((await request('/web/v1/session/close-test/close','POST',undefined,key)).status).toBe(404);
  const spec=await (await request('/openapi.json')).json() as any;expect(spec.paths['/web/v1/session/{id}/close'].post.operationId).toBe('web_session_close');expect(spec.paths['/web/v1/session/{id}']).toBeUndefined();
- const catalog=await (await request('/')).json() as any;expect(catalog.endpoints).toContain('POST /web/v1/session/:id/close');expect(catalog.endpoints).not.toContain('DELETE /web/v1/session/:id');
+ const catalog=await (await request('/')).json() as any;expect(catalog.endpoints).toContain('POST /web/v1/session/{id}/close');expect(catalog.endpoints).not.toContain('DELETE /web/v1/session/:id');
 });
