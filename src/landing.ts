@@ -1,3 +1,5 @@
+import { SITE_PATHS } from "./site-catalog";
+import { playground } from "./site-playground";
 import { WEB_CATALOG } from "./product-catalog";
 /**
  * The one page written for a person.
@@ -24,10 +26,9 @@ import { origin, prefixForHost } from "./http";
 import type { Env } from "./types";
 
 /** What the page claims to be, in the words somebody would search for. */
-const TITLE = "Oassis — Web Infrastructure for AI Agents";
+const TITLE = "Oassis — Web Scraping & Browser API for AI Agents";
 const DESCRIPTION =
-  "Search, scrape, crawl and control a browser through one API. " +
-  "Delegate research through the Task API, connect via MCP or use HTTP endpoints with x402.";
+  "Web scraping, crawling, browser automation and research for AI agents through one API and MCP server. Try Scrape and Map without an account or API key.";
 
 /** The house stylesheet, shared by every page a person reads. */
 export const STYLE = `<style>
@@ -215,16 +216,20 @@ const apiSections = () => `<section class="content-section" id="web-tools" aria-
 <h2 id="web-tools-title">Web Tools</h2>
 <p class="section-lead">Synchronous. Each request returns its result in the same response.</p>
 ${apiTable(WEB_TOOLS)}
+<p>Explore the <a href="/web-scraping-api">web scraping API</a>, <a href="/web-crawling-api">web crawling API</a> and <a href="/browser-api">browser automation API</a>. Start with the <a href="/docs">API documentation</a> or <a href="/try">try Scrape and Map</a>.</p>
 </section>
+${playground()}
 <section class="content-section" id="web-tasks" aria-labelledby="web-tasks-title">
 <h2 id="web-tasks-title">Web Tasks</h2>
 <p class="section-lead">Asynchronous. Creating a job returns an id; follow that id for progress and results. Research is a task too.</p>
 ${apiTable(WEB_TASKS)}
+<p>Read the <a href="/task-api">Web Tasks guide</a> for batch extraction, crawling and research.</p>
 </section>
 <section class="content-section" id="agents" aria-labelledby="agents-title">
 <h2 id="agents-title">Agents</h2>
 <p class="section-lead">Scheduled agents that watch pages for you and report what changed. Free, with a free account key.</p>
 ${apiTable(AGENTS)}
+<p>Explore <a href="/agents">scheduled Agents</a>: <a href="/agents/price-watch">Price Watch</a>, <a href="/agents/web-watch">Web Watch</a> and <a href="/agents/competitor-monitor">Competitor Monitor</a>.</p>
 <h3>Managing agents</h3>
 ${apiTable(AGENT_MANAGEMENT)}
 </section>`;
@@ -266,23 +271,122 @@ ${priceTable()}
 <p class="muted">Prices are quoted per call before any work happens. A research task reserves its budget and charges what it actually used; with HTTP/x402, the budget is charged as a fixed package. HTTP with an API key uses the same reserve and actual-cost settlement as MCP.</p>
 </section>`;
 
-/** The questions a reader asks before signing up, in the order they ask them. */
+/** Visible answers and structured data share one source to prevent factual drift. */
 const FAQS: [string, string][] = [
-  ["What is Oassis?", "Web infrastructure for AI agents. Search, read, crawl and control a browser through one API, delegate research to Tasks, and run scheduled Agents."],
-  ["What is the difference between Web Tools and Web Tasks?", "Web Tools return an individual operation in the same response. Web Tasks run batch extraction, crawling or research in the background: start a job, follow its progress and collect its results. Research returns an answer with sources."],
-  ["Do I need an account or an API key?", "MCP includes 100 trial credits for scrape and map. Other tools, Tasks and scheduled Agents need an account and an API key. HTTP calls can be paid per call with x402, without an account."],
-  ["How many free credits do I get?", "100 trial credits over MCP for scrape and map. A verified account gets 1,000 welcome credits once. Purchased credits do not expire."],
-  ["What is MCP?", "The Model Context Protocol lets AI clients discover and call tools. Point any MCP-compatible client at https://api.oassis.dev/mcp to use Oassis."],
-  ["What is x402?", "An HTTP payment protocol. A request without payment receives a 402 response with the price. The client pays in USDC on Base and retries. No account is needed."],
-  ["Can Oassis read every website?", "No. robots.txt, access restrictions, anti-bot systems and page changes can prevent a read. Check the errors and the sources rather than assuming a page was read."],
-  ["Are scheduled Agents free?", "Yes, with a free account key. They run daily or weekly, and report what changed."],
+  [
+    "What is Oassis and what can an AI agent do with it?",
+    "Oassis is web infrastructure for AI agents. Its API can extract page content and documents, discover site URLs, search the web, interact with a browser, run batch extraction and crawling, produce research with sources, and monitor pages on a schedule. The production API base URL is https://api.oassis.dev. Web Tools use /web/v1, Web Tasks use /tasks/v1, and scheduled Agents use /agents/v1."
+  ],
+  [
+    "Which Oassis API should I use: Web Tools, Web Tasks or Agents?",
+    "Use Web Tools for one synchronous operation, such as reading a URL or clicking a button. Use Web Tasks for an asynchronous batch, crawl or research job: start it, keep its job ID, then request status and results. Use Agents for recurring price, page-change or competitor monitoring. A map discovers URLs; a crawl discovers and reads pages; research answers a question using sources."
+  ],
+  [
+    "How do I scrape a web page or document with Oassis?",
+    "Call POST /web/v1/scrape or the MCP tool web_scrape with a url and formats, for example {\"url\":\"https://oassis.dev\",\"formats\":[\"markdown\"]}. One request returns the requested outputs. You can also supply html instead of a URL. GET /web/v1/scrape describes the operation without executing it or charging for it. See /web-scraping-api for examples."
+  ],
+  [
+    "Which output formats and extraction parameters does Web Scrape support?",
+    "Web Scrape supports markdown, html, links, elements, controls, accessibility, screenshot, pdf and json. Use selectors with the elements format; use json.prompt or json.schema with the json format. Other options include waiting for a CSS selector, viewport settings, request headers and cookies, screenshot and PDF options, and maxAge for cached content. Use the OpenAPI reference for each format's exact schema. Document conversion and browser-rendered pages have different format constraints."
+  ],
+  [
+    "How can I find the URLs on a website without crawling every page?",
+    "Call POST /web/v1/map or web_map with a url. Map discovers URLs from sitemaps and can also inspect links on the rendered page. Set includePage to false for sitemap-only discovery. Set limit to cap results, search to keep URLs containing text, includeSubdomains to include subdomains, and includePaths or excludePaths to filter paths. The limit accepts 1 to 5,000 URLs. GET /web/v1/map describes the inputs. Map returns URLs rather than page content."
+  ],
+  [
+    "How can I search the web with Oassis?",
+    "Call POST /web/v1/search or web_search_exa to search the web through Exa. GET /web/v1/search describes the current search parameters and conditions. Search requires payment through account credits or HTTP x402; it is not included in the keyless Scrape and Map trial. Use Scrape to read a result page after finding its URL."
+  ],
+  [
+    "How do I open a persistent browser session for an AI agent?",
+    "Call POST /web/v1/session or web_session_open with a url. The response provides a session ID and the requested page outputs; controls are the default format. Keep the session ID for later actions and close the session after finishing. GET /web/v1/session describes the parameters. See /browser-api for the complete session workflow."
+  ],
+  [
+    "How can an agent click, type, select or wait on a page?",
+    "Call POST /web/v1/act or web_act with the session ID from Web Session Open and the actions to perform. Actions include navigation, clicking, typing, selecting, pressing keys, scrolling, waiting, going back and going forward. Use the control references returned by the browser to target elements. GET /web/v1/act describes the action schema. Actions operate on an existing browser session."
+  ],
+  [
+    "How do I close a browser session and stop further browser time?",
+    "Call POST /web/v1/session/{id}/close or web_session_close with the session ID. Closing ends the browser session and settles any outstanding browser time. There is no separate closing fee, but pending browser time may still be charged. The API also closes an idle session automatically; close explicitly when your workflow finishes."
+  ],
+  [
+    "How can I report an incorrect extraction or tool result?",
+    "Call POST /web/v1/feedback or web_feedback to report whether a result was correct. Feedback is free. GET /web/v1/feedback describes the accepted feedback fields. Include the information requested by that schema so the report can be associated with the relevant result."
+  ],
+  [
+    "How do I scrape a list of known URLs in one background job?",
+    "Start a batch with POST /tasks/v1/scrape/batch or web_scrape_batch, supplying the URL list and supported output options. Save the returned jobId. Read progress and results with GET /tasks/v1/scrape/batch/{id} or web_batch_status. Stop pending work with POST /tasks/v1/scrape/batch/{id}/cancel; in MCP, call web_batch_status with cancel: true. GET /tasks/v1/scrape/batch describes the start parameters."
+  ],
+  [
+    "How do I crawl a website and collect the content of linked pages?",
+    "Start a crawl with POST /tasks/v1/crawl or web_crawl. Supply the starting URL and set the page limit and path filters to define the scope. Read progress and collected results with GET /tasks/v1/crawl/{id} or web_crawl_status. Cancel pending work with POST /tasks/v1/crawl/{id}/cancel; in MCP, call web_crawl_status with cancel: true. GET /tasks/v1/crawl describes the start parameters. See /web-crawling-api for the difference between Map and Crawl."
+  ],
+  [
+    "How can I ask Oassis to research a question and return sources?",
+    "Start research with POST /tasks/v1/research or web_task_start. The task runs asynchronously and returns a job ID. Read progress, sources, the result and billing with GET /tasks/v1/research/{id} or web_task_status. Stop pending research with POST /tasks/v1/research/{id}/cancel or web_task_cancel. GET /tasks/v1/research describes the research route and its pricing. The /task-api guide explains research requests, budgets and lifecycle."
+  ],
+  [
+    "Do status checks and cancellation start or charge for another task?",
+    "No. Status and cancellation endpoints operate on an existing job ID and are free. They require proof that you own the job: use the owning account API key, or the access_token returned for an HTTP x402 task, sent in the Task-Token header for research. Cancelling stops pending work; work already completed or in progress may still incur charges. Keep the original job ID and access credentials."
+  ],
+  [
+    "Which scheduled monitoring agents are available?",
+    "GET /agents/v1 lists the scheduled agents. Price Watch monitors product prices, Web Watch reports page changes and optional keyword matches, and Competitor Monitor watches a competitor's selected pages. Services run daily or weekly. Scheduled Agents currently require a free account API key and allow up to 10 active services per account. They are HTTP services, not MCP tools."
+  ],
+  [
+    "How do I create a Price Watch, Web Watch or Competitor Monitor service?",
+    "Read GET /agents/v1/price-watch, GET /agents/v1/web-watch or GET /agents/v1/competitor-monitor for each agent's parameters. Create the service by sending POST to the same path with your account API key. Price Watch reads product URLs; Web Watch watches page content; Competitor Monitor watches selected paths on a domain. The first run is queued for a scheduler tick and is not an immediate synchronous result."
+  ],
+  [
+    "How do I list monitoring services, read their reports or cancel them?",
+    "Use GET /agents/v1/services to list your services and GET /agents/v1/services/{id} to read one service, its state and its latest report. Use POST /agents/v1/services/{id}/cancel to stop future scheduled runs. These endpoints require the owning account API key. Cancellation retains the latest report, and a read already in progress may finish."
+  ],
+  [
+    "Can I try Web Scrape and Web Map without an API key?",
+    "Yes. The homepage includes separate Web Scrape and Web Map demos with https://oassis.dev prefilled. They call the same MCP tools and share the existing one-time 100-credit keyless trial, identified by the caller's network address. The demo needs no account or API key. Other paid tools and continued usage after the trial need account credits or supported HTTP x402 payment."
+  ],
+  [
+    "How do I connect an MCP client to Oassis?",
+    "Use https://api.oassis.dev/mcp as the MCP server URL. POST /mcp accepts the JSON-RPC initialization handshake, tools/list for tool discovery and tools/call for execution. Keyless access covers the Scrape and Map trial. Configure Authorization: Bearer YOUR_API_KEY to use shared account credits for other tools and continued usage. GET /mcp provides discovery information; GET /.well-known/mcp/server.json provides the server manifest. See /mcp for setup examples."
+  ],
+  [
+    "How do HTTP API keys, credits and x402 payments work?",
+    "Send Authorization: Bearer YOUR_API_KEY with an HTTP API request to use account credits. Alternatively, supported paid HTTP operations accept x402: the first unpaid request returns an HTTP 402 payment challenge, then a compatible client pays in USDC on Base and retries. GET describes an operation without running or charging for it; POST executes it. Discovery, task status and cancellation are not purchases of a new execution. See /x402 and /docs for examples."
+  ],
+  [
+    "How much do Web Scrape, Map, browser actions and background tasks cost?",
+    `One credit equals ${inDollars(CREDIT_MICROS)}. A standard page output costs ${credits(scrapePrice(["markdown"]))} credit; JSON extraction costs ${credits(scrapePrice(["json"]))} credits, and a cached output costs ${credits(PRICES.cacheHit)} credit. Sitemap-only Map costs ${credits(mapPrice(false))} credit, or ${credits(mapPrice(true))} credits when the page is included. Opening a browser session costs ${credits(PRICES.sessionOpen)} credits plus requested formats; actions cost ${credits(PRICES.action)} credit each plus outputs and any outstanding browser time. Batch extraction starts at ${credits(scrapePrice(["markdown"]))} credit per URL and crawling at ${credits(crawlPagePrice(["markdown"]))} credits per page. Research uses a budget. The pricing table on this page lists the current rates and settlement rules.`
+  ],
+  [
+    "How do I check my available and reserved API credits?",
+    "Call GET /web/v1/account with your API key. It returns available and reserved credits and the recharge URL; checking the account is free. A verified account receives 1,000 welcome credits once. Purchased credits do not expire. Create keys and manage credits in /dashboard/billing. Use the same account key for HTTP and MCP to share the balance."
+  ],
+  [
+    "Where are the complete endpoint schemas and integration guides?",
+    "GET /openapi.json provides the machine-readable HTTP API reference. GET /llms.txt provides a text overview with documentation links. GET /mcp and GET /.well-known/mcp/server.json expose MCP discovery information. Human-readable guides are available at /docs, /web-scraping-api, /web-crawling-api, /browser-api, /task-api, /mcp, /x402 and /agents. GET /robots.txt and GET /sitemap.xml provide crawling instructions and the public site URL list."
+  ],
+  [
+    "Can Oassis bypass every website restriction or guarantee an extraction?",
+    "No. A page may be unavailable, protected by authentication or anti-bot systems, or changed since an integration was written. Keyless reads respect robots.txt. Inspect the returned errors, metadata and sources before relying on extracted content. A successful HTTP response can still contain tool-level errors. Use browser sessions when your workflow requires permitted interaction before reading a page."
+  ]
 ];
 
-/** The last section of the home: the questions, each one a closed item that opens on click. */
 const faqSection = () => `<section class="content-section" id="faq" aria-labelledby="faq-title">
 <h2 id="faq-title">Frequently asked questions</h2>
-${FAQS.map(([q, a]) => `<details><summary>${escape(q)}</summary><p>${escape(a)}</p></details>`).join("\n")}
+<p class="section-lead">Choose the right endpoint for extraction, browser automation, research and scheduled monitoring.</p>
+${FAQS.map(([q, a], i) => `<details id="faq-${i + 1}"><summary>${escape(q)}</summary><p>${escape(a)}</p></details>`).join("\n")}
+<p>Read the <a href="/docs">API quick start</a>, <a href="/task-api">Web Tasks guide</a>, <a href="/agents">scheduled Agents guide</a> or <a href="https://api.oassis.dev/openapi.json">complete OpenAPI reference</a>.</p>
 </section>`;
+
+const faqSchema = () => JSON.stringify({
+  '@context': 'https://schema.org',
+  '@type': 'FAQPage',
+  '@id': 'https://oassis.dev/#faq',
+  mainEntity: FAQS.map(([name, text], i) => ({
+    '@type': 'Question', '@id': `https://oassis.dev/#faq-${i + 1}`, name,
+    acceptedAnswer: { '@type': 'Answer', text },
+  })),
+}).replace(/</g, '\\u003c');
 
 /** The system claim uses the hero's own styles; this only adds the line of parts. */
 const CLAIM_STYLE = `<style>
@@ -329,6 +433,22 @@ export function landing(c: Context<{ Bindings: Env }>, account: { email: string 
 <title>${escape(TITLE)}</title>
 <meta name="description" content="${escape(DESCRIPTION)}">
 <link rel="canonical" href="${base}/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Oassis">
+<meta property="og:title" content="${escape(TITLE)}">
+<meta property="og:description" content="${escape(DESCRIPTION)}">
+<meta property="og:url" content="${base}/">
+<meta property="og:image" content="${base}/og-image.png">
+<meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Oassis — web infrastructure for AI agents">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">${faqSchema()}</script>
+<script type="application/ld+json">${JSON.stringify({
+  '@context': 'https://schema.org', '@graph': [
+    {'@type':'Organization','@id':'https://oassis.dev/#organization',name:'Oassis',url:'https://oassis.dev/',logo:'https://oassis.dev/icon-512.png',sameAs:['https://github.com/oassisdev']},
+    {'@type':'WebSite','@id':'https://oassis.dev/#website',url:'https://oassis.dev/',name:'Oassis',description:DESCRIPTION,inLanguage:'en',publisher:{'@id':'https://oassis.dev/#organization'}},
+  ],
+})}</script>
 ${ICON_LINKS}
 ${STYLE}
 ${LANDING_STYLE}
@@ -339,16 +459,35 @@ ${FOOTER_STYLE}
 <body class="oassis-home">
 <div class="wrap">
 <header class="site-nav"><a class="brand" href="/" aria-label="oassis home"><img src="/favicon.svg" alt="" width="35" height="35">oassis</a><div class="header-links"><nav aria-label="Main"><a href="/#web-tools">Web Tools</a><a href="/#web-tasks">Web Tasks</a><a href="/#agents">Agents</a><a href="/#faq">FAQ</a></nav>${headerAccount(account)}</div></header>
+<main id="main">
 <section class="launch claim" aria-labelledby="claim-title">
-<div class="launch-top"><h1 id="claim-title">The web, for<br>your agents.</h1><div class="launch-copy"><div class="claim-lines"><p><span class="claim-part">Web Tools</span> for each step.</p><p><span class="claim-part">Web Tasks</span> for background jobs and research.</p><p><span class="claim-part">Agents</span> that watch pages on a schedule.</p></div><div class="launch-actions"><a class="button" href="/mcp">Connect via MCP</a><a class="button secondary" href="/signup">Get Api Key</a></div><p class="connection-note">Try MCP with 100 credits. Sign up for 1,000 welcome credits and create your API key.</p></div></div>
+<div class="launch-top"><h1 id="claim-title">The web, for<br>your agents.</h1><div class="launch-copy"><p>Oassis provides web scraping, crawling, browser automation and research through one API and an MCP server for AI agents.</p><div class="claim-lines"><p><span class="claim-part">Web Tools</span> for each step.</p><p><span class="claim-part">Web Tasks</span> for background jobs and research.</p><p><span class="claim-part">Agents</span> that watch pages on a schedule.</p></div><div class="launch-actions"><a class="button" href="/try">Try Scrape &amp; Map</a><a class="button secondary" href="/mcp">Connect via MCP</a><a class="button secondary" href="/signup">Get Api Key</a></div><p class="connection-note">Try MCP with 100 credits. Sign up for 1,000 welcome credits and create your API key.</p></div></div>
 </section>
 ${apiSections()}
 ${pricingSection()}
 ${faqSection()}
+</main>
 <footer class="site-footer"><p>© ${new Date().getUTCFullYear()} Oassis</p><nav aria-label="Legal"><a href="/terms">Terms</a><a href="/privacy">Privacy</a><a href="/privacy#cookies">Cookies</a></nav></footer>
 </div>
 </body>
 </html>`;
+}
+
+/** A shareable entry point that opens directly on the two keyless demos. */
+export function tryPage(): string {
+  return `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Try Web Scrape &amp; Map — Oassis</title>
+<meta name="description" content="Try Oassis Web Scrape and Web Map directly in your browser. Extract page content or discover website URLs. No account or API key needed for the trial.">
+<link rel="canonical" href="https://oassis.dev/try">
+<meta property="og:title" content="Try Web Scrape &amp; Map — Oassis"><meta property="og:description" content="Paste a URL and try web extraction and site mapping. No API key needed."><meta property="og:url" content="https://oassis.dev/try"><meta property="og:type" content="website"><meta property="og:image" content="https://oassis.dev/og-image.png">
+${ICON_LINKS}${STYLE}${LANDING_STYLE}${FOOTER_STYLE}
+<style>.oassis-home .try-page .content-section{padding-top:24px}.try-page .site-nav{padding-top:20px}.try-page .playground h1{font-size:clamp(28px,5vw,36px);border:0;padding:0;margin:0 0 12px}</style>
+</head><body class="oassis-home"><div class="wrap try-page">
+<header class="site-nav"><a class="brand" href="/" aria-label="oassis home"><img src="/favicon.svg" alt="" width="35" height="35">oassis</a><nav aria-label="Site"><a href="/docs">Docs</a><a href="/">Home</a></nav></header>
+<main>${playground().replace('<h2 id="try-title">', '<h1 id="try-title">').replace('Try Scrape &amp; Map</h2>', 'Try Scrape &amp; Map</h1>').replace(/<h3/g, '<h2').replace(/<\/h3>/g, '</h2>')}</main>
+<footer class="site-footer"><p>Oassis</p><nav aria-label="Legal"><a href="/terms">Terms</a><a href="/privacy">Privacy</a></nav></footer>
+</div></body></html>`;
 }
 
 /**
@@ -415,7 +554,7 @@ export function sitemapXml(c: Context<{ Bindings: Env }>): string {
 export function sitemapFor(base: string, prefix: string): string {
   const site = ["oassis.dev", "www.oassis.dev"].includes(new URL(base).hostname);
   const urls = site
-    ? ["/", "/docs", "/task-api", "/web-scraping-api", "/web-crawling-api", "/browser-api", "/mcp", "/x402", "/use-cases", "/privacy", "/terms"]
+    ? SITE_PATHS
     : ["/privacy", "/terms"];
   // Keep the exported two-argument interface used by the text renderer.
   void prefix;

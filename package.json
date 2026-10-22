@@ -1,6 +1,6 @@
 {
   "name": "oassis-api",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "description": "Web extraction and browser control for agents: one endpoint, many formats, pay per call.",
   "type": "module",

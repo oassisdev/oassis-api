@@ -1,3 +1,4 @@
+import { tryPage } from "./landing";
 import { WEB_CATALOG } from "./product-catalog";
 /** Public HTML guides. Product endpoints stay on api.oassis.dev. */
 import { productPath } from "./api-routes";
@@ -87,7 +88,12 @@ export function mountSitePages(app: Hono<{ Bindings: Env }>): void {
    url.protocol="https:";url.hostname="oassis.dev";return c.redirect(url.toString(),308);
   }
   if (!["GET","HEAD"].includes(c.req.method)) return next();
-  const path=url.pathname.replace(/\/$/,"");const guide=GUIDES.find(g=>g.path===path);
+  const path=url.pathname.replace(/\/$/,"");
+  if(path==='/try'){
+   if(url.pathname!==path)return c.redirect(`${SITE}${path}${url.search}`,308);
+   return c.html(tryPage(),200,{"cache-control":"public, max-age=0, must-revalidate"});
+  }
+  const guide=GUIDES.find(g=>g.path===path);
   if(!guide)return next();
   if(url.pathname!==path)return c.redirect(`${SITE}${path}${url.search}`,308);
   return c.html(renderGuide(guide),200,{"cache-control":"public, max-age=3600"});

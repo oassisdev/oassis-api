@@ -3,7 +3,7 @@
   "name": "dev.oassis/scraper-crawler",
   "title": "oassis \u2014 web scraping, crawling and browser control for AI agents",
   "description": "Web Tools and Web Tasks for AI agents. 100-credit MCP trial; API-key credits or x402.",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "websiteUrl": "https://oassis.dev",
   "remotes": [
     {

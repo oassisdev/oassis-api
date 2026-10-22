@@ -1,19 +1,23 @@
 # oassis — web scraping, crawling and browser control for AI agents
 
-Turn any web page or document into markdown, map and crawl whole sites, and drive a **real
-browser**. Pay per call with a wallet: **no API key, no signup, no monthly plan.**
+Extract web pages and documents, discover site URLs, crawl sites, control a browser,
+and run research through one API and MCP server. Try Scrape and Map with 100 trial
+credits, then use an API key with account credits. Paid HTTP operations also support
+independent x402 wallet payment without an account.
 
 **[oassis.dev](https://oassis.dev)** · MCP: `https://api.oassis.dev/mcp` ·
 [OpenAPI](https://api.oassis.dev/openapi.json) · [llms.txt](https://api.oassis.dev/llms.txt)
 
 ---
 
-## Try it now, no account (MCP)
+## Try Scrape and Map without an account
 
-Over MCP every tool works without a key or an account, except `web_search_exa`, which is paid.
-Send your own client `User-Agent`: requests carrying the default of `curl` or an HTTP library are refused.
+Open **[oassis.dev/try](https://oassis.dev/try)** to test Web Scrape and Web Map in your browser.
+No signup or API key is needed for the one-time 100-credit trial. The trial is shared
+by callers on the same network. Other paid tools and usage beyond the trial require
+an API key and sufficient account credits over MCP.
 
-List the 11 tools:
+Discover the current MCP tools:
 
 ```bash
 curl -X POST https://api.oassis.dev/mcp \
@@ -23,7 +27,7 @@ curl -X POST https://api.oassis.dev/mcp \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 ```
 
-Map oassis.dev (free over MCP):
+Map oassis.dev using the MCP trial:
 
 ```bash
 curl -X POST https://api.oassis.dev/mcp \
@@ -31,15 +35,6 @@ curl -X POST https://api.oassis.dev/mcp \
   -H 'accept: application/json, text/event-stream' \
   -H 'user-agent: MyAgent/1.0' \
   -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"web_map","arguments":{"url":"https://oassis.dev"}}}'
-```
-
-Real response (trimmed):
-
-```
-{"urls":["https://oassis.dev/","https://oassis.dev/web/v1/scrape","https://oassis.dev/llms.txt",
-"https://oassis.dev/openapi.json","https://oassis.dev/privacy","https://oassis.dev/terms",
-"https://oassis.dev/support"],"discovered":7,"offered":14,"sources":{"sitemap":7,"page":0}}
-
 ```
 
 Read a page (`web_scrape`) with the same client:
@@ -52,12 +47,8 @@ curl -X POST https://api.oassis.dev/mcp \
   -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"web_scrape","arguments":{"url":"https://oassis.dev","formats":["markdown"]}}}'
 ```
 
-Search is the one paid tool over MCP. Calling it without a key explains the price and how to pay:
-
-```
-web_search_exa is paid, not free: each search costs $0.007, which is the price Exa charges, passed through.
-Two ways to carry on: pay per call with a wallet (x402, USDC on Base), or use an API key.
-```
+Search, browser sessions, actions and background tasks require an API key with credits
+over MCP. HTTP supports account credits or independent x402 payment.
 
 ---
 
@@ -79,7 +70,8 @@ HTTP/2 402
 payment-required: eyJ4NDAyVmVyc2lvbiI6MiwiZXJyb3IiOiJQYXltZW50IHJlcXVpcmVkIi…
 ```
 
-The `payment-required` header (base64) states: **2000 micro-USDC = $0.002**, network
+The `payment-required` header (base64) quotes the full request. A fresh page with
+`markdown` and `controls` costs **4000 micro-USDC = $0.004**, network
 `eip155:8453` (Base mainnet), asset USDC `0x8335…2913`, recipient `payTo` `0x23Fc…Dfc75d`.
 
 Step 2: sign the payment with your wallet. Use an x402 SDK for your language: the client signs
@@ -155,26 +147,35 @@ identifier returned at creation.
 | Each action | $0.0005 |
 | Search | What Exa charges, passed through |
 
-Minimum charge per call: $0.002. The price is quoted before the work and charged after;
-**if the work does not happen, you are not charged.** Balances do not expire and there is no monthly fee.
+Each operation uses its quoted price; requesting multiple outputs adds their prices.
+Cache hits, actions and lifecycle operations have separate rates. Purchased credits
+do not expire. Credit packs can be bought once or optionally monthly.
+
+Account-key research reserves a maximum budget and settles actual usage. HTTP x402
+research purchases a fixed execution budget. Inspect errors and billing metadata: a
+failed or partial result does not necessarily mean that no work was performed.
 
 Crawls and batches are charged up front for the pages or urls they may read. A refund for work that never ran is a credit to an API-key account. A wallet payment (x402) is settled on-chain and cannot be reversed from here, so with x402 you pay for every url or the `limit` you ask for: map the site first.
 
-Example: `markdown` + `controls` of one page = $0.002. A 10-page crawl with `markdown` = $0.02, because each page charges its outputs plus its links.
+Pricing example: `markdown` + `controls` on a fresh web page = $0.004. A 10-page crawl
+with `markdown` costs up to $0.04, because each page charges its outputs plus link discovery.
 
 ---
 
-## Free over MCP
+## MCP access and credits
 
 | Item | Rule |
 |---|---|
-| Every tool except `web_search_exa` | Free, no key, no account |
-| `web_search_exa` | Paid: Exa's price, passed through |
-| Client identification | Send your own `User-Agent`; HTTP-library defaults are refused |
-| `robots.txt` | Respected on free reads |
-| Browser sessions | 3 open at once across all keyless callers |
+| `web_scrape` and `web_map` without a key | One-time 100-credit trial shared by network identity |
+| Other paid tools and continued usage | Bearer API key and sufficient shared account credits |
+| Discovery, status and cancellation | Free; lifecycle requests still require ownership |
+| `web_feedback` | Free, subject to reporting limits |
+| Browser session close | No closing fee; outstanding browser time may be settled |
+| `robots.txt` | Respected on keyless trial reads |
 
-Paying per call over HTTP (x402) or with an API key reads the same content on your own responsibility, with no MCP restrictions.
+One credit equals $0.002. Verified accounts receive 1,000 welcome credits once.
+Buy 2,500 credits for $5, 10,000 for $20 or 25,000 for $50. Purchased credits do not
+expire. The same Bearer key and balance work over MCP and HTTP.
 
 ---
 
@@ -222,8 +223,8 @@ Cancel with `POST /tasks/v1/research/TASK_ID/cancel`. Cancelling a finished task
 spends is charged at the end, and the rest of the reserve is returned in the same transaction.
 A request that would exceed the balance is refused with `402` and nothing is reserved.
 
-**Prices.** Each client price is at least twice what one call costs us in the worst case (a 100%
-markup, which is a 50% gross margin). The start fee is charged once when a task is accepted:
+**Prices.** Research charges for the steps it attempts. The start fee is charged once
+when a task is accepted:
 
 | Step | Charged |
 | --- | --- |

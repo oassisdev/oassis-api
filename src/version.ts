@@ -9,4 +9,4 @@
  * Raise it here, then republish the registry entry with `mcp-publisher publish`: the
  * registry refuses a version it has already seen.
  */
-export const VERSION = "1.0.1";
+export const VERSION = "1.0.2";

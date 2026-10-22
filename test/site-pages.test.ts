@@ -16,6 +16,15 @@ describe('public SEO guides',()=>{
    }
   }expect(titles.size).toBe(paths.length);
  });
+ it('opens a shareable trial page directly on Scrape and Map without a key',async()=>{
+  const r=await app().request('https://oassis.dev/try');expect(r.status).toBe(200);const html=await r.text();
+  expect(html).toContain('rel="canonical" href="https://oassis.dev/try"');
+  expect(html).toContain('<h1 id="try-title">Try Scrape &amp; Map</h1>');
+  expect(html.indexOf('id="try-map-form"')).toBeGreaterThan(html.indexOf('id="try-scrape-form"'));
+  expect(html).not.toContain('type="password"');expect(html).not.toContain('class="launch claim"');
+  const slash=await app().request('https://oassis.dev/try/?utm_source=email');expect(slash.status).toBe(308);expect(slash.headers.get('location')).toBe('https://oassis.dev/try?utm_source=email');
+  expect((await app().request('https://api.oassis.dev/try')).status).toBe(404);
+ });
  it('redirects HTTP and www permanently, preserving the path and query',async()=>{
   for(const url of ['http://oassis.dev/docs?q=1','https://www.oassis.dev/docs?q=1']){const r=await app().request(url);expect(r.status).toBe(308);expect(r.headers.get('location')).toBe('https://oassis.dev/docs?q=1');}
  });

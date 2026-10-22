@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Context } from "hono";
 import { landing, robotsTxt, sitemapXml } from "../src/landing";
+import { WEB_CATALOG } from "../src/product-catalog";
 import { PRICES, inDollars } from "../src/billing/prices";
 import type { Env } from "../src/types";
 
@@ -15,16 +16,17 @@ describe("the home page, emptied", () => {
   const html = landing(ctx());
 
   it("keeps what a search engine reads at the top", () => {
-    expect(html).toMatch(/<title>[^<]*Web Infrastructure[^<]*<\/title>/i);
+    expect(html).toMatch(/<title>[^<]*Web Scraping[^<]*<\/title>/i);
     expect(html).toMatch(/<meta name="description" content="[^"]{80,}"/);
     expect(html).toContain('<link rel="canonical" href="https://oassis.dev/">');
   });
 
-  it("shows the brand and the header options, with no forms", () => {
+  it("shows the brand and keeps the playground below Web Tools", () => {
     expect(html).toContain('<a class="brand" href="/" aria-label="oassis home">');
-    expect(html).not.toContain("<main");
-    expect(html).not.toContain("<form");
-    expect(html).not.toContain("<input");
+    expect(html).toContain('<main id="main">');
+    expect(html.indexOf('id="try-tools"')).toBeGreaterThan(html.indexOf('id="web-tools"'));
+    expect(html.indexOf('id="try-tools"')).toBeLessThan(html.indexOf('id="web-tasks"'));
+    expect(html).toContain('id="try-scrape-form"');
   });
 
   it("opens with a claim for the whole system: Web Tools, Tasks and Agents", () => {
@@ -87,7 +89,33 @@ describe("the home page, emptied", () => {
     const faq = html.indexOf('<section class="content-section" id="faq"');
     expect(faq).toBeGreaterThan(-1);
     expect(html.lastIndexOf("<section")).toBe(faq);
-    expect(html.slice(faq).match(/<details>/g)?.length).toBeGreaterThanOrEqual(5);
+    expect(html.slice(faq).match(/<details id="faq-\d+">/g)?.length).toBeGreaterThanOrEqual(5);
+  });
+
+  it("keeps every structured FAQ answer identical to the visible answer", () => {
+    const schemaText = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)?.[1];
+    expect(schemaText).toBeTruthy();
+    const schema = JSON.parse(schemaText!);
+    expect(schema['@type']).toBe('FAQPage');
+    expect(schema.mainEntity).toHaveLength(24);
+    const escape = (text: string) => text.replace(/[&<>"]/g, ch => `&#${ch.charCodeAt(0)};`);
+    for (const [i, entry] of schema.mainEntity.entries()) {
+      expect(html).toContain(`<details id="faq-${i + 1}"><summary>${escape(entry.name)}</summary><p>${escape(entry.acceptedAnswer.text)}</p></details>`);
+      expect(entry['@id']).toBe(`https://oassis.dev/#faq-${i + 1}`);
+    }
+  });
+
+  it("covers all public product routes and MCP tool names inside crawlable FAQs", () => {
+    const faq = html.slice(html.indexOf('<section class="content-section" id="faq"'), html.indexOf('<footer'));
+    for (const operation of WEB_CATALOG) {
+      expect(faq, operation.path).toContain(`${operation.method} ${operation.path}`);
+      expect(faq, operation.mcp).toContain(operation.mcp);
+    }
+    for (const route of ['/agents/v1', '/agents/v1/price-watch', '/agents/v1/web-watch', '/agents/v1/competitor-monitor', '/agents/v1/services', '/agents/v1/services/{id}', '/agents/v1/services/{id}/cancel', '/web/v1/account', '/openapi.json', '/llms.txt', '/.well-known/mcp/server.json']) {
+      expect(faq, route).toContain(route);
+    }
+    expect(faq).toContain('Task-Token');
+    expect(faq).toContain('cancel: true');
   });
 
   it("ends with a footer that links the terms, the privacy policy and its cookie section", () => {
